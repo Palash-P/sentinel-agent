@@ -1,0 +1,22 @@
+# Web framework
+Django==5.1.4
+djangorestframework==3.15.2
+django-cors-headers==4.6.0
+
+# Server
+gunicorn==23.0.0
+whitenoise==6.8.2
+
+# Config
+python-dotenv==1.0.1
+
+# MongoDB
+pymongo==4.9.2
+motor==3.6.0
+
+# Gemini (Google Gen AI SDK)
+google-genai
+
+# Agent framework
+langgraph==0.2.60
+langchain==0.3.13
