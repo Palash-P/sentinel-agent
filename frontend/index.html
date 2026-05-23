@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IncidentIQ — AI Incident Resolution</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #00ff88;
+    --green-dim: #00cc6a;
+    --green-glow: rgba(0,255,136,0.15);
+    --green-glow-strong: rgba(0,255,136,0.3);
+    --red: #ff3366;
+    --cyan: #00d4ff;
+    --amber: #ffaa00;
+    --bg: #080808;
+    --bg2: #0d0d0d;
+    --bg3: #111111;
+    --bg4: #161616;
+    --border: rgba(0,255,136,0.2);
+    --border-dim: rgba(255,255,255,0.06);
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --text-muted: #444;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'Rajdhani', sans-serif;
+    --font-ui: 'Share Tech Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-display);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    background: rgba(8,8,8,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .nav-logo {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  .nav-logo span { color: var(--text-dim); font-weight: 400; }
+  .nav-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .nav-links {
+    display: flex;
+    gap: 2rem;
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    list-style: none;
+  }
+  .nav-links a { color: inherit; text-decoration: none; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--green); }
+
+  /* ── MAIN ── */
+  main {
+    position: relative;
+    z-index: 1;
+    padding-top: 60px;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    text-align: center;
+    position: relative;
+  }
+  .hero-glow {
+    position: absolute;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,255,136,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+  }
+  .hero-badge {
+    font-family: var(--font-ui);
+    font-size: 0.65rem;
+    color: var(--green);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    letter-spacing: 3px;
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    background: rgba(0,255,136,0.05);
+  }
+  .hero h1 {
+    font-size: clamp(3rem, 8vw, 6rem);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -1px;
+    margin-bottom: 1rem;
+  }
+  .hero h1 .accent { color: var(--green); }
+  .hero h1 .dim { color: var(--text-muted); }
+  .hero-sub {
+    font-family: var(--font-ui);
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 3rem;
+    max-width: 500px;
+  }
+
+  /* ── ANALYZE PANEL ── */
+  .analyze-panel {
+    width: 100%;
+    max-width: 800px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .analyze-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    animation: scan-line 3s infinite;
+  }
+  @keyframes scan-line {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .panel-header {
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+  }
+  .panel-header .dot { width:8px;height:8px;border-radius:50%; }
+  .dot-red{background:#ff5f57;} .dot-amber{background:#febc2e;} .dot-green{background:#28c840;}
+  .panel-title { margin-left: auto; margin-right: auto; }
+  textarea#error-input {
+    width: 100%;
+    min-height: 200px;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text);
+    resize: vertical;
+    line-height: 1.6;
+  }
+  textarea#error-input::placeholder { color: var(--text-muted); }
+  .panel-footer {
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .char-count { font-family: var(--font-ui); font-size: 0.65rem; color: var(--text-muted); }
+
+  /* ── ANALYZE BUTTON ── */
+  .btn-analyze {
+    position: relative;
+    background: transparent;
+    border: 1px solid var(--green);
+    color: var(--green);
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    padding: 0.6rem 1.5rem;
+    cursor: pointer;
+    overflow: hidden;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .btn-analyze::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--green);
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+    z-index: -1;
+  }
+  .btn-analyze:hover { color: #000; }
+  .btn-analyze:hover::before { transform: translateX(0); }
+  .btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-analyze:disabled::before { transform: translateX(-100%); }
+  .btn-analyze.loading .btn-text { opacity: 0; }
+  .btn-analyze .spinner {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-analyze.loading .spinner { display: flex; }
+  .spinner-ring {
+    width: 14px; height: 14px;
+    border: 1px solid var(--green);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── AGENT STEPS ── */
+  .agent-steps {
+    display: none;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 1.5rem;
+    width: 100%;
+    max-width: 800px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    overflow: hidden;
+  }
+  .agent-steps.visible { display: flex; }
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border-dim);
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    transition: all 0.3s;
+  }
+  .step-item:last-child { border-bottom: none; }
+  .step-item.active { color: var(--green); background: rgba(0,255,136,0.04); }
+  .step-item.done { color: var(--text-dim); }
+  .step-icon { width: 16px; height: 16px; flex-shrink: 0; }
+  .step-icon.pending { border: 1px solid var(--text-muted); border-radius: 50%; }
+  .step-icon.active-icon {
+    border: 1px solid var(--green);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  .step-icon.done-icon {
+    background: var(--green);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  /* ── RESULTS ── */
+  .results-section {
+    display: none;
+    width: 100%;
+    max-width: 1100px;
+    padding: 4rem 2rem;
+    margin: 0 auto;
+  }
+  .results-section.visible { display: block; }
+  .results-header {
+    font-family: var(--font-ui);
+    font-size: 0.65rem;
+    color: var(--green);
+    letter-spacing: 3px;
+    margin-bottom: 2rem;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .results-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border-dim);
+    border: 1px solid var(--border-dim);
+    margin-bottom: 1px;
+  }
+  .result-card {
+    background: var(--bg2);
+    padding: 1.5rem;
+  }
+  .result-card.full { grid-column: 1 / -1; }
+  .result-card-label {
+    font-family: var(--font-ui);
+    font-size: 0.6rem;
+    color: var(--green);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .result-card-label::before {
+    content: '//';
+    color: var(--text-muted);
+  }
+  .result-card-content {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .prevention-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .prevention-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.9rem;
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .prevention-list li::before {
+    content: '>';
+    color: var(--green);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .similar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .similar-item {
+    border: 1px solid var(--border-dim);
+    padding: 0.75rem 1rem;
+    background: var(--bg3);
+    font-size: 0.8rem;
+  }
+  .similar-title {
+    font-family: var(--font-mono);
+    color: var(--cyan);
+    font-size: 0.75rem;
+    margin-bottom: 4px;
+  }
+  .similar-cause { color: var(--text-dim); font-size: 0.8rem; }
+  .incident-id {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+  }
+
+  /* ── PAST INCIDENTS ── */
+  .incidents-section {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 2rem 6rem;
+  }
+  .section-header {
+    font-family: var(--font-ui);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-dim);
+  }
+  .section-header .count {
+    margin-left: auto;
+    color: var(--green);
+    font-size: 0.7rem;
+  }
+  .incidents-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .incidents-table th {
+    font-family: var(--font-ui);
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border-dim);
+    font-weight: 400;
+  }
+  .incidents-table td {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    vertical-align: top;
+    font-family: var(--font-display);
+  }
+  .incidents-table tr { transition: background 0.15s; cursor: pointer; }
+  .incidents-table tr:hover td { background: rgba(0,255,136,0.03); }
+  .td-title {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--cyan);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-cause { color: var(--text-dim); max-width: 300px; line-height: 1.4; font-size: 0.82rem; }
+  .td-date { font-family: var(--font-ui); font-size: 0.65rem; color: var(--text-muted); white-space: nowrap; }
+  .td-badge {
+    font-family: var(--font-ui);
+    font-size: 0.6rem;
+    padding: 2px 8px;
+    border: 1px solid rgba(0,255,136,0.3);
+    color: var(--green);
+    background: rgba(0,255,136,0.05);
+    white-space: nowrap;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 2px;
+  }
+
+  /* ── ERROR TOAST ── */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: var(--bg3);
+    border: 1px solid rgba(255,51,102,0.4);
+    padding: 1rem 1.25rem;
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    color: var(--red);
+    max-width: 350px;
+    z-index: 200;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+    letter-spacing: 1px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ── SCROLL REVEAL ── */
+  .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s, transform 0.6s; }
+  .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border-dim);
+    background: var(--bg2);
+    margin-top: 1.5rem;
+    width: 100%;
+    max-width: 800px;
+  }
+  .stat-item {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border-right: 1px solid var(--border-dim);
+    text-align: center;
+  }
+  .stat-item:last-child { border-right: none; }
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--green);
+    line-height: 1;
+  }
+  .stat-label {
+    font-family: var(--font-ui);
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  @media (max-width: 700px) {
+    .results-grid { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 2.5rem; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">Incident<span>IQ</span></div>
+  <ul class="nav-links">
+    <li><a href="#analyze">Analyze</a></li>
+    <li><a href="#incidents">History</a></li>
+  </ul>
+  <div class="nav-status">
+    <div class="status-dot"></div>
+    SYSTEM ONLINE
+  </div>
+</nav>
+
+<main>
+  <!-- HERO -->
+  <section class="hero" id="analyze">
+    <div class="hero-glow"></div>
+    <div class="hero-badge">// AI-Powered Incident Resolution Engine</div>
+    <h1>
+      <span class="dim">Resolve</span><br>
+      <span class="accent">Incidents</span><br>
+      <span class="dim">Faster</span>
+    </h1>
+    <p class="hero-sub">PASTE YOUR ERROR LOG. GET ROOT CAUSE, FIX, AND PREVENTION IN SECONDS.</p>
+
+    <div class="analyze-panel" id="main-panel">
+      <div class="panel-header">
+        <span class="dot dot-red"></span>
+        <span class="dot dot-amber"></span>
+        <span class="dot dot-green"></span>
+        <span class="panel-title">// ERROR_LOG_INPUT.txt</span>
+      </div>
+      <textarea id="error-input" spellcheck="false" placeholder="Traceback (most recent call last):&#10;  File &quot;app.py&quot;, line 42, in &lt;module&gt;&#10;    raise RuntimeError('Paste your real error here...')"></textarea>
+      <div class="panel-footer">
+        <span class="char-count" id="char-count">0 CHARS</span>
+        <button class="btn-analyze" id="analyze-btn" onclick="analyzeIncident()">
+          <span class="btn-text">// ANALYZE</span>
+          <span class="spinner"><span class="spinner-ring"></span></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Agent Steps -->
+    <div class="agent-steps" id="agent-steps">
+      <div class="step-item" id="step-1">
+        <div class="step-icon pending" id="icon-1"></div>
+        <span>EXTRACTING ERROR SIGNATURE</span>
+      </div>
+      <div class="step-item" id="step-2">
+        <div class="step-icon pending" id="icon-2"></div>
+        <span>SEARCHING INCIDENT MEMORY</span>
+      </div>
+      <div class="step-item" id="step-3">
+        <div class="step-icon pending" id="icon-3"></div>
+        <span>GENERATING POSTMORTEM</span>
+      </div>
+      <div class="step-item" id="step-4">
+        <div class="step-icon pending" id="icon-4"></div>
+        <span>STORING TO KNOWLEDGE BASE</span>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-bar" id="stats-bar" style="display:none">
+      <div class="stat-item">
+        <div class="stat-value" id="stat-incidents">0</div>
+        <div class="stat-label">INCIDENTS RESOLVED</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-similar">0</div>
+        <div class="stat-label">SIMILAR FOUND</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="stat-time">0s</div>
+        <div class="stat-label">RESOLUTION TIME</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="results-section" id="results-section">
+    <div class="results-header">// POSTMORTEM REPORT</div>
+    <div class="results-grid" id="results-grid">
+      <div class="result-card">
+        <div class="result-card-label">ROOT CAUSE</div>
+        <div class="result-card-content" id="res-root-cause">—</div>
+      </div>
+      <div class="result-card">
+        <div class="result-card-label">FIX APPLIED</div>
+        <div class="result-card-content" id="res-fix-applied">—</div>
+      </div>
+      <div class="result-card full">
+        <div class="result-card-label">PREVENTION STEPS</div>
+        <ul class="prevention-list" id="res-prevention"></ul>
+      </div>
+      <div class="result-card full" id="similar-card" style="display:none">
+        <div class="result-card-label">SIMILAR PAST INCIDENTS</div>
+        <div class="similar-list" id="res-similar"></div>
+      </div>
+      <div class="result-card full">
+        <div class="result-card-label">INCIDENT ID</div>
+        <div class="incident-id" id="res-id">—</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAST INCIDENTS -->
+  <section class="incidents-section reveal" id="incidents">
+    <div class="section-header">
+      // INCIDENT HISTORY
+      <span class="count" id="incident-count">LOADING...</span>
+    </div>
+    <table class="incidents-table">
+      <thead>
+        <tr>
+          <th>TITLE</th>
+          <th>ROOT CAUSE</th>
+          <th>STATUS</th>
+          <th>TIMESTAMP</th>
+        </tr>
+      </thead>
+      <tbody id="incidents-tbody">
+        <tr><td colspan="4" class="empty-state">// FETCHING INCIDENT DATABASE...</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+
+// Char counter
+document.getElementById('error-input').addEventListener('input', function() {
+  document.getElementById('char-count').textContent = this.value.length + ' CHARS';
+});
+
+// Scroll reveal
+const revealObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = '// ERROR: ' + msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+function setStep(n, state) {
+  const step = document.getElementById('step-' + n);
+  const icon = document.getElementById('icon-' + n);
+  step.className = 'step-item ' + (state === 'active' ? 'active' : state === 'done' ? 'done' : '');
+  if (state === 'active') {
+    icon.className = 'step-icon active-icon';
+    icon.textContent = '';
+  } else if (state === 'done') {
+    icon.className = 'step-icon done-icon';
+    icon.textContent = '✓';
+  } else {
+    icon.className = 'step-icon pending';
+    icon.textContent = '';
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runSteps(resultPromise) {
+  const steps = document.getElementById('agent-steps');
+  steps.classList.add('visible');
+
+  setStep(1, 'active');
+  await sleep(600);
+  setStep(1, 'done'); setStep(2, 'active');
+  await sleep(800);
+  setStep(2, 'done'); setStep(3, 'active');
+
+  const result = await resultPromise;
+
+  await sleep(600);
+  setStep(3, 'done'); setStep(4, 'active');
+  await sleep(500);
+  setStep(4, 'done');
+  return result;
+}
+
+let startTime;
+
+async function analyzeIncident() {
+  const input = document.getElementById('error-input').value.trim();
+  if (!input) { showToast('ERROR LOG CANNOT BE EMPTY'); return; }
+
+  const btn = document.getElementById('analyze-btn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  startTime = Date.now();
+
+  const fetchPromise = fetch(API + '/api/analyze/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ error_log: input })
+  }).then(r => r.json());
+
+  let data;
+  try {
+    data = await runSteps(fetchPromise);
+  } catch (e) {
+    showToast('CONNECTION FAILED');
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    return;
+  }
+
+  btn.classList.remove('loading');
+  btn.disabled = false;
+
+  if (data.error) { showToast(data.error.substring(0, 80)); return; }
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  showResults(data, elapsed);
+  loadIncidents();
+}
+
+function showResults(data, elapsed) {
+  document.getElementById('res-root-cause').textContent = data.root_cause || '—';
+  document.getElementById('res-fix-applied').textContent = data.fix_applied || '—';
+
+  const prevList = document.getElementById('res-prevention');
+  prevList.innerHTML = '';
+  (data.prevention_steps || []).forEach(s => {
+    const li = document.createElement('li');
+    li.textContent = s;
+    prevList.appendChild(li);
+  });
+
+  if (data.similar_incidents && data.similar_incidents.length > 0) {
+    document.getElementById('similar-card').style.display = 'block';
+    const sim = document.getElementById('res-similar');
+    sim.innerHTML = '';
+    data.similar_incidents.forEach(i => {
+      const div = document.createElement('div');
+      div.className = 'similar-item';
+      div.innerHTML = '<div class="similar-title">' + (i.title || 'Untitled') + '</div>' +
+        '<div class="similar-cause">' + (i.root_cause || '').substring(0,120) + '...</div>';
+      sim.appendChild(div);
+    });
+  }
+
+  document.getElementById('res-id').textContent = '// INCIDENT_ID: ' + (data.incident_id || 'N/A');
+
+  const resultsSection = document.getElementById('results-section');
+  resultsSection.classList.add('visible');
+  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Stats
+  const statsBar = document.getElementById('stats-bar');
+  statsBar.style.display = 'flex';
+  document.getElementById('stat-similar').textContent = (data.similar_incidents || []).length;
+  document.getElementById('stat-time').textContent = elapsed + 's';
+}
+
+async function loadIncidents() {
+  try {
+    const res = await fetch(API + '/api/incidents/');
+    const data = await res.json();
+    const tbody = document.getElementById('incidents-tbody');
+    document.getElementById('incident-count').textContent = data.length + ' RECORDS';
+    document.getElementById('stat-incidents').textContent = data.length;
+
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">// NO INCIDENTS IN DATABASE</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    data.forEach(inc => {
+      const tr = document.createElement('tr');
+      const date = inc.created_at ? new Date(inc.created_at).toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+      }) : '—';
+      tr.innerHTML =
+        '<td class="td-title">' + (inc.title || '').substring(0, 40) + '</td>' +
+        '<td class="td-cause">' + (inc.root_cause || '—').substring(0, 80) + '…</td>' +
+        '<td><span class="td-badge">RESOLVED</span></td>' +
+        '<td class="td-date">' + date + '</td>';
+      tbody.appendChild(tr);
+    });
+  } catch(e) {
+    document.getElementById('incidents-tbody').innerHTML =
+      '<tr><td colspan="4" class="empty-state">// FAILED TO LOAD INCIDENT DATABASE</td></tr>';
+  }
+}
+
+loadIncidents();
+</script>
+</body>
+</html>
