@@ -1,277 +1,156 @@
 # IncidentIQ Development Log
 
 **Last Updated:** May 23, 2026  
-**Project State:** ~80% complete — core agent pipeline and API endpoints built, frontend/deployment files incomplete
+**Project State:** Deployed MVP — core agent, API, frontend, and Railway deployment path are in place.
 
 ---
 
-## Completed Features
+## Completed Today
 
-### Core Infrastructure
-- ✅ **Django 5.1.4 + DRF 3.15.2** — Web framework and REST API layer
-- ✅ **MongoDB Atlas via pymongo 4.10.1** — No Django ORM; raw document operations only
-- ✅ **Environment-based config** — All secrets via `.env` (MONGODB_URI, GEMINI_API_KEY, etc.)
-- ✅ **CORS + WhiteNoise** — django-cors-headers and whitenoise for static serving on Railway
+### Full-Stack MVP
+- Implemented `POST /api/analyze/` with DRF `APIView`; validates `error_log`, calls `run_agent()`, logs failures, and returns JSON.
+- Implemented `GET /api/incidents/` with JSON-safe `_id` and `created_at` serialization; returns `[]` instead of 500 on list failures.
+- Added `frontend/index.html` and served it at `/` via Django `TemplateView`.
+- Added `BASE_DIR / "frontend"` to Django `TEMPLATES["DIRS"]`.
 
-### Agent Pipeline (LangGraph)
-- ✅ **Linear 4-node graph** in `incidents/agent.py`:
-  1. `extract_error()` — Clean error log, derive title from first line
-  2. `search_memory()` — Generate embedding, vector search for similar incidents (top 3)
-  3. `generate_postmortem()` — Prompt Gemini with context, return structured JSON
-  4. `store_incident()` — Persist full document to MongoDB with embedding
-- ✅ **Graph caching** — `_compiled_graph` singleton, lazily compiled on first `run_agent()` call
-- ✅ **JSON serialization** — `_serialize_incidents()` handles BSON ObjectId → string, datetime → ISO format
+### Gemini + Embeddings
+- Migrated from `google-generativeai` to the new `google-genai` package.
+- Updated generation model usage to `GENERATION_MODEL = "gemini-2.5-flash"` in `incidents/gemini.py`.
+- Updated embedding model usage to `EMBEDDING_MODEL = "gemini-embedding-001"`.
+- Confirmed `generate_embedding()` uses `client.models.embed_content(...).embeddings[0].values`.
+- Added `setup_vector_index.py` for MongoDB Atlas Vector Search setup with `EMBEDDING_DIMENSIONS = 3072`.
 
-### Gemini Integration (`incidents/gemini.py`)
-- ✅ **Embedding generation** — `generate_embedding()` via `models/text-embedding-004`
-- ✅ **Structured post-mortem** — `generate_postmortem()` returns `{root_cause, fix_applied, prevention_steps[]}`
-- ✅ **JSON schema validation** — Enforces response format; raises on malformed JSON
-- ✅ **Lazy SDK init** — `_configure()` ensures API key is set before first call
-- ✅ **Error handling** — Catches `google_exceptions.GoogleAPIError`, logs context
+### Railway Deployment
+- Added `Procfile`:
+  `web: gunicorn incidentiq.wsgi:application --bind 0.0.0.0:$PORT`
+- Updated `ALLOWED_HOSTS` fallback to `*` for Railway.
+- Verified `STATIC_ROOT = BASE_DIR / "staticfiles"`.
+- Verified WhiteNoise middleware is immediately after `SecurityMiddleware`.
+- Marked live Railway deployment:
+  `https://web-production-4435e.up.railway.app`
 
-### MongoDB Layer (`incidents/models.py` & `incidentiq/mongo.py`)
-- ✅ **Incident dataclass** — Type hints, defaults, `to_document()` serializer
-- ✅ **Client singleton** — `get_client()` w/ LRU cache, auto-reused per process
-- ✅ **Collection helpers**:
-  - `get_incidents_collection()` — Primary collection handle
-  - `ensure_incidents_collection()` — Idempotent create + baseline indexes
-  - `save_incident()` — Insert with validation, return `ObjectId`
-  - `get_all_incidents()` — All documents, newest first (sort by `created_at`)
-  - `find_similar_incidents()` — Vector search via `$vectorSearch` aggregation pipeline
-- ✅ **Ping test** — `ping()` for connection diagnostics
-- ✅ **Error handling** — All PyMongoError caught, logged, re-raised
-
-### Settings & Config (`incidentiq/settings.py`)
-- ✅ **Required environment variables** (with sensible defaults):
-  - `MONGODB_URI` (required for production)
-  - `GEMINI_API_KEY` (required for production)
-  - `GEMINI_MODEL` → default `gemini-2.5-flash`
-  - `GEMINI_EMBEDDING_MODEL` → default `models/text-embedding-004`
-  - `MONGODB_DB_NAME` → default `incidentiq`
-  - `MONGODB_INCIDENTS_COLLECTION` → default `incidents`
-  - `MONGODB_VECTOR_INDEX` → default `incidents_vector_index`
-  - `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`
-- ✅ **Database** — SQLite in-memory only (Django requires it; no ORM used)
-- ✅ **REST Framework** — JSON-only (no form data), no auth required for MVP
-
-### Testing & Validation
-- ✅ **`test_mongo.py`** — End-to-end round-trip test:
-  - Boots Django + loads settings
-  - Creates sample incident document via `Incident` dataclass
-  - Inserts into MongoDB
-  - Reads back and verifies round-trip
-  - Cleans up test document
-
-### Dependencies (`requirements.txt`)
-All locked versions, production-ready:
-```
-Django==5.1.4
-djangorestframework==3.15.2
-django-cors-headers==4.6.0
-gunicorn==23.0.0
-whitenoise==6.8.2
-python-dotenv==1.0.1
-pymongo==4.10.1
-motor==3.6.0
-google-generativeai==0.8.3
-langgraph==0.2.60
-langchain==0.3.13
-```
-
-### Endpoints Implemented
-- ✅ `GET /api/health/` — Returns `{"status": "ok"}`
-- ✅ `POST /api/analyze/` — Accepts `{"error_log": "..."}`, runs `run_agent()`, returns postmortem JSON
-- ✅ `GET /api/incidents/` — Lists stored incidents with JSON-safe `_id` and `created_at` fields
+### Git Checkpoints
+- `04e7f93` — `feat: core agent pipeline working end-to-end`
+- `09fff9e` — `feat: frontend complete, full stack working locally`
+- `e43a320` — `feat: ready for Railway deployment`
+- `b864eb9` — `chore: live on Railway - https://web-production-4435e.up.railway.app`
 
 ---
 
-## Current State
+## Current Architecture
 
-### Working Code
-- **Core agent graph** — Ready to invoke; accepts error log string, returns full post-mortem
-- **API interface** — Analyze and incident-list endpoints are implemented with DRF APIView
-- **MongoDB integration** — Functional; tested with test_mongo.py
-- **Gemini connectivity** — Tested in isolation; requires valid API key
-- **Type hints & logging** — All functions follow CLAUDE.md rules
+### Agent Node Structure
+The LangGraph flow is linear and stable:
 
-### Code Quality
-- ✅ Type hints on all signatures (Python 3.11+)
-- ✅ Docstrings on all functions (one-line + full docstring modules)
-- ✅ Error handling on all external calls (MongoDB, Gemini)
-- ✅ No bare `except`, no print() statements
-- ✅ No Django ORM usage
+`START -> extract_error -> search_memory -> generate_postmortem -> store_incident -> END`
 
-### Known Environment Setup
-- GCP service account JSON exists (`gcp-service-account.json`) — for future GCP integrations
-- `.env` file exists in editor but not committed (correct per CLAUDE.md)
-- No `.env.example` created yet
+- `extract_error()` cleans the raw log and derives a title.
+- `search_memory()` generates an embedding and queries MongoDB Atlas Vector Search.
+- `generate_postmortem()` calls Gemini and expects structured JSON.
+- `store_incident()` persists the incident document to MongoDB.
 
----
+### API Surface
+- `GET /` — serves `frontend/index.html`
+- `POST /api/analyze/` — runs the agent and returns the generated post-mortem.
+- `GET /api/incidents/` — lists stored incidents.
+- `GET /api/health/` — returns `{"status": "ok"}`.
 
-## Open Issues & Missing Work
-
-### 🔴 Critical — Blocking MVP
-1. **MongoDB Vector Search Index not created**:
-   - Agent tries to reference `settings.MONGODB_VECTOR_INDEX` in aggregation
-   - Vector index must be created manually in MongoDB Atlas UI or via Atlas API
-   - **Action needed:** Document setup steps or automate index creation
-
-2. **No frontend** (`frontend/index.html`):
-   - Currently no UI to test the API
-   - Need single-page HTML with dark theme (per CLAUDE.md & ARCHITECTURE.md)
-
-### 🟡 Important — Needed for Deployment
-3. **No `Procfile`** for Railway deployment
-   - Need entry point: `web: gunicorn incidentiq.wsgi`
-
-4. **No seed data / bootstrap**:
-   - When deployed fresh, incidents collection is empty
-   - First query to vector search may fail or return no results
-   - Consider: seed with synthetic incidents or handle gracefully
-
-### 🟠 Nice-to-have
-5. **Pagination for GET /api/incidents/**:
-   - Large incident lists should be paginated or limited
-
-6. **Error response standardization**:
-   - What does the client see if Gemini times out? MongoDB fails? Agent validation fails?
-   - Should standardize error schema in views
-
-7. **Logging & observability**:
-   - All functions log, but no centralized log aggregation setup for Railway
-   - Consider: structured JSON logging for better cloud readability
-
-8. **Docker support for local dev**:
-    - No docker-compose.yml or Dockerfile for easier local setup
-
----
-
-## Stopped At
-
-**Last working checkpoint:** Agent pipeline complete, ready to invoke via `run_agent(error_log: str)`.
-
-**What's ready to test:**
-```python
-from incidents.agent import run_agent
-
-result = run_agent("""
-java.lang.NullPointerException at CheckoutService.charge()
-    at com.example.CheckoutService.charge(CheckoutService.java:42)
-""")
-print(result)
-# → {title, error_log, root_cause, fix_applied, prevention_steps, similar_incidents, incident_id}
-```
-
-**Next immediate steps:**
-1. Create `frontend/index.html`
-   - Form to submit error logs
-   - Display returned postmortem (root_cause, fix_applied, prevention_steps)
-   - Show similar past incidents
-   - Dark theme per CLAUDE.md
-
-2. Set up MongoDB Vector Search index (manual or automated)
-   - If manual: document in README
-   - If automated: add utility function + call in Django startup
-
-3. Create `Procfile`
-
----
-
-## File Manifest
-
-**Modified/Created:**
-- `incidentiq/settings.py` — Django config + env var setup
-- `incidentiq/mongo.py` — MongoDB client singleton
-- `incidentiq/urls.py` — Root URL routing
-- `incidentiq/asgi.py` — ASGI for Railway
-- `incidentiq/wsgi.py` — WSGI for gunicorn
-- `incidents/models.py` — Incident dataclass + MongoDB helpers
-- `incidents/agent.py` — LangGraph 4-node pipeline
-- `incidents/gemini.py` — Gemini embedding + post-mortem generation
-- `incidents/views.py` — Health, analyze, and incident-list API views
-- `incidents/urls.py` — Routes health, analyze, and incidents endpoints
-- `incidents/apps.py` — Django app config
-- `requirements.txt` — All dependencies locked
-- `manage.py` — Django CLI
-- `test_mongo.py` — Round-trip MongoDB test
-- `.env.example` — Environment variable template
-
-**Not yet created:**
-- `frontend/index.html`
-- `Procfile`
-
-**Existing (for reference):**
-- `CLAUDE.md` — Rules & project setup guide
-- `ARCHITECTURE.md` — High-level design
-- `.env` — Local secrets (never commit)
-- `gcp-service-account.json` — GCP credentials (for future use)
-
----
-
-## Notes for Next AI Session
-
-### Key Invariants (Do NOT Break)
-- Never use Django ORM; MongoDB only
-- Type hints + docstrings on all functions
-- No print(); use logging module
-- No bare except clauses
-- All external calls (MongoDB, Gemini) must have error handling
-
-### Agent Node Structure (Stable)
-The graph is linear and complete; adding nodes should be rare. If testing/debugging:
-- Use `run_agent(error_log)` as the public API
-- Each node receives and returns a `dict[str, Any]` (AgentState)
-- State is **not** persisted between graph invocations; each call is independent
-
-### MongoDB Schema (Current)
+### MongoDB Collection Schema
 ```javascript
 {
   _id: ObjectId,
-  title: string,           // Derived from error_log first line
-  error_log: string,       // Cleaned version (no extra blanks)
+  title: string,
+  error_log: string,
   root_cause: string,
   fix_applied: string,
   prevention_steps: [string],
-  embedding: [float],      // Vector for similarity search
+  embedding: [float],
   created_at: ISODate
 }
 ```
 
-### Vector Search Setup
-Vector index **must** exist at `settings.MONGODB_VECTOR_INDEX` (`incidents_vector_index` by default) with:
-- **Field:** `embedding` (array of floats)
-- **Similarity metric:** cosine (standard)
-- **Dimensions:** 768 (text-embedding-004 output size)
-
-If index is missing, `find_similar_incidents()` will raise `PyMongoError`.
-
-### Build/Deploy Commands
-```bash
-# Local dev
-python manage.py runserver
-
-# Test MongoDB
-python test_mongo.py
-
-# Production (Railway)
-gunicorn incidentiq.wsgi
-```
-
-### Common Issues to Watch
-1. **MONGODB_URI not set** → RuntimeError on first `run_agent()` call
-2. **GEMINI_API_KEY invalid** → google_exceptions.GoogleAPIError
-3. **Vector index missing** → PyMongoError on similar-incident search
-4. **Gemini returns non-JSON** → ValueError in `generate_postmortem()`
+Vector Search index requirements:
+- Collection: `incidents`
+- Field: `embedding`
+- Type: vector
+- Similarity: cosine
+- Dimensions: `3072` for `gemini-embedding-001`
+- Index name: `MONGODB_VECTOR_INDEX`, default `incidents_vector_index`
 
 ---
 
-## Session History
+## In Progress
 
-- **Session 1 (May 23, 2026):**
-  - Set up project structure and read CLAUDE.md, ARCHITECTURE.md
-  - Implemented core agent pipeline (4-node LangGraph)
-  - Integrated Gemini for embeddings + post-mortem generation
-  - Set up MongoDB layer with vector search support
-  - Created test_mongo.py for validation
-  - **Stopped:** views.py only has health endpoint; API endpoints and frontend incomplete
+- Railway deployment is live, but runtime verification should continue against the deployed URL.
+- MongoDB Atlas Vector Search index setup is scripted in `setup_vector_index.py`; confirm the index exists in the target Atlas cluster.
+- Frontend is present and served by Django; continue polishing UX/error states after live API testing.
 
+---
+
+## Open Issues
+
+1. **Verify live Railway environment variables**
+   - Required: `MONGODB_URI`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `DJANGO_SECRET_KEY`.
+   - Optional/current: `DJANGO_ALLOWED_HOSTS`, `DJANGO_DEBUG`, `MONGODB_DB_NAME`, `MONGODB_INCIDENTS_COLLECTION`, `MONGODB_VECTOR_INDEX`.
+
+2. **Confirm Atlas Vector Search index**
+   - `setup_vector_index.py` creates a 3072-dimension vector index.
+   - If the index is missing, `find_similar_incidents()` can fail during `/api/analyze/`.
+
+3. **Potential stale setting**
+   - `incidentiq/settings.py` still defines `GEMINI_EMBEDDING_MODEL`, but `incidents/gemini.py` now uses the local `EMBEDDING_MODEL = "gemini-embedding-001"` constant.
+   - Either remove the unused setting later or wire the constant back to config intentionally.
+
+4. **Tests not fully run in this Codex shell**
+   - `python` is not on PATH here.
+   - Bundled Python lacks project dependencies such as `python-dotenv`.
+   - Syntax parsing passed for edited Python files during the session.
+
+5. **Nice-to-have backend hardening**
+   - Pagination for `GET /api/incidents/`.
+   - More standardized API error schema.
+   - Better deployed logging/observability.
+   - Seed incidents or graceful first-run behavior for empty Atlas collections.
+
+---
+
+## Current File Manifest
+
+Modified/created project files:
+- `incidentiq/settings.py` — env config, frontend templates dir, Railway settings.
+- `incidentiq/urls.py` — root frontend route and API include.
+- `incidentiq/mongo.py` — MongoDB client/collection helpers.
+- `incidents/agent.py` — LangGraph pipeline.
+- `incidents/gemini.py` — Google Gen AI Gemini generation and embeddings.
+- `incidents/models.py` — MongoDB document helpers.
+- `incidents/views.py` — API views for health, analyze, and incident list.
+- `incidents/urls.py` — API URL routes.
+- `frontend/index.html` — vanilla JS dark-theme frontend.
+- `setup_vector_index.py` — Atlas Vector Search index helper.
+- `requirements.txt` — Django, DRF, MongoDB, LangGraph, Google Gen AI dependencies.
+- `Procfile` — Railway web process.
+- `.env.example` — environment variable template.
+- `test_mongo.py` — MongoDB round-trip diagnostic.
+
+Never commit:
+- `.env`
+- API keys or service credentials
+- `gcp-service-account.json`
+
+---
+
+## Commands
+
+```bash
+# Local server
+python manage.py runserver
+
+# MongoDB diagnostic
+python test_mongo.py
+
+# Create Atlas vector search index
+python setup_vector_index.py
+
+# Railway process command
+gunicorn incidentiq.wsgi:application --bind 0.0.0.0:$PORT
+```

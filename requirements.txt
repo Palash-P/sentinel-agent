@@ -9,6 +9,7 @@ whitenoise==6.8.2
 
 # Config
 python-dotenv==1.0.1
+requests==2.32.3
 
 # MongoDB
 pymongo==4.9.2
