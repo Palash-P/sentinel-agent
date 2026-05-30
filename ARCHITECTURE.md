@@ -88,6 +88,19 @@ Static/frontend serving:
 - `STATIC_ROOT = BASE_DIR / "staticfiles"`.
 - WhiteNoise middleware is installed after `SecurityMiddleware`.
 
+## Operational Utilities
+
+- `setup_vector_index.py` creates the MongoDB Atlas Vector Search index for the `embedding` field.
+- `seed_incidents.py` posts realistic demo error logs to `/api/analyze/` using `requests`.
+- `seed_incidents.py` waits 3 seconds between requests to reduce Gemini rate-limit pressure.
+- Selected seed incidents can be rerun with `python seed_incidents.py --indices 7 8 10 11`.
+
+## Source Control Notes
+
+- Active branch: `main`.
+- Local `.codex/` configuration is ignored because it can contain machine-specific MCP settings or credentials.
+- `.env`, service account files, and API keys must never be committed.
+
 ## Key Decisions
 
 - MongoDB via PyMongo raw documents, not Django ORM.

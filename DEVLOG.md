@@ -1,39 +1,37 @@
 # IncidentIQ Development Log
 
-**Last Updated:** May 23, 2026  
-**Project State:** Deployed MVP — core agent, API, frontend, and Railway deployment path are in place.
+**Last Updated:** May 27, 2026  
+**Project State:** Submission-ready MVP. The app is deployed, documented, seeded with demo incidents, and pushed to GitHub on `main`.
 
 ---
 
 ## Completed Today
 
-### Full-Stack MVP
-- Implemented `POST /api/analyze/` with DRF `APIView`; validates `error_log`, calls `run_agent()`, logs failures, and returns JSON.
-- Implemented `GET /api/incidents/` with JSON-safe `_id` and `created_at` serialization; returns `[]` instead of 500 on list failures.
-- Added `frontend/index.html` and served it at `/` via Django `TemplateView`.
-- Added `BASE_DIR / "frontend"` to Django `TEMPLATES["DIRS"]`.
+### Submission Readiness
+- Rewrote `README.md` as the hackathon-facing project brief for judges.
+- Added the live demo URL: `https://web-production-4435e.up.railway.app`.
+- Documented the problem statement, agent flow, tech stack, ASCII architecture, key features, setup steps, and API endpoints.
+- Marked the hackathon track as **Google Cloud Rapid Agent - MongoDB track**.
 
-### Gemini + Embeddings
-- Migrated from `google-generativeai` to the new `google-genai` package.
-- Updated generation model usage to `GENERATION_MODEL = "gemini-2.5-flash"` in `incidents/gemini.py`.
-- Updated embedding model usage to `EMBEDDING_MODEL = "gemini-embedding-001"`.
-- Confirmed `generate_embedding()` uses `client.models.embed_content(...).embeddings[0].values`.
-- Added `setup_vector_index.py` for MongoDB Atlas Vector Search setup with `EMBEDDING_DIMENSIONS = 3072`.
+### Demo Data Seeding
+- Created `seed_incidents.py` with 15 realistic error logs covering Django, Python, Redis, PostgreSQL, MongoDB, Gemini, and Railway deployment failures.
+- Added `requests==2.32.3` to `requirements.txt`.
+- Added a 3-second `time.sleep(3)` delay between requests to reduce Gemini rate-limit pressure.
+- Added `--indices` support for rerunning selected seed cases.
+- Reran previously failed seed indices `7`, `8`, `10`, and `11`; all four succeeded.
 
-### Railway Deployment
-- Added `Procfile`:
-  `web: gunicorn incidentiq.wsgi:application --bind 0.0.0.0:$PORT`
-- Updated `ALLOWED_HOSTS` fallback to `*` for Railway.
-- Verified `STATIC_ROOT = BASE_DIR / "staticfiles"`.
-- Verified WhiteNoise middleware is immediately after `SecurityMiddleware`.
-- Marked live Railway deployment:
-  `https://web-production-4435e.up.railway.app`
+### Security Cleanup
+- Removed a GitHub personal access token from `.codex/config.toml`.
+- Removed `.codex/config.toml` from Git tracking.
+- Added `.codex/` to `.gitignore` so local Codex/MCP config is not committed again.
+- Important: the exposed token appeared in earlier Git history and should be treated as compromised. It must remain revoked/rotated in GitHub.
 
-### Git Checkpoints
-- `04e7f93` — `feat: core agent pipeline working end-to-end`
-- `09fff9e` — `feat: frontend complete, full stack working locally`
-- `e43a320` — `feat: ready for Railway deployment`
-- `b864eb9` — `chore: live on Railway - https://web-production-4435e.up.railway.app`
+### Documentation + Git
+- Updated `DEVLOG.md` and `ARCHITECTURE.md` to reflect the deployed architecture.
+- Committed the submission docs and seed script:
+  `5426830 docs: README complete, 15 incidents seeded, project submission ready`
+- Renamed the local branch from `master` to `main`.
+- Pushed `main` to GitHub: `origin/main`.
 
 ---
 
@@ -50,10 +48,10 @@ The LangGraph flow is linear and stable:
 - `store_incident()` persists the incident document to MongoDB.
 
 ### API Surface
-- `GET /` — serves `frontend/index.html`
-- `POST /api/analyze/` — runs the agent and returns the generated post-mortem.
-- `GET /api/incidents/` — lists stored incidents.
-- `GET /api/health/` — returns `{"status": "ok"}`.
+- `GET /` - serves `frontend/index.html`.
+- `POST /api/analyze/` - runs the agent and returns the generated post-mortem.
+- `GET /api/incidents/` - lists stored incidents.
+- `GET /api/health/` - returns `{"status": "ok"}`.
 
 ### MongoDB Collection Schema
 ```javascript
@@ -81,61 +79,66 @@ Vector Search index requirements:
 
 ## In Progress
 
-- Railway deployment is live, but runtime verification should continue against the deployed URL.
-- MongoDB Atlas Vector Search index setup is scripted in `setup_vector_index.py`; confirm the index exists in the target Atlas cluster.
-- Frontend is present and served by Django; continue polishing UX/error states after live API testing.
+- Final live-demo verification on Railway before submission recording.
+- Confirm GitHub default branch behavior if the remote still points `origin/HEAD` at `master`.
+- Continue monitoring Gemini rate limits during demos; `seed_incidents.py` now throttles requests.
 
 ---
 
 ## Open Issues
 
-1. **Verify live Railway environment variables**
-   - Required: `MONGODB_URI`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `DJANGO_SECRET_KEY`.
-   - Optional/current: `DJANGO_ALLOWED_HOSTS`, `DJANGO_DEBUG`, `MONGODB_DB_NAME`, `MONGODB_INCIDENTS_COLLECTION`, `MONGODB_VECTOR_INDEX`.
+1. **Compromised GitHub token must remain revoked**
+   - The token was removed from the working tree and `.codex/` is now ignored.
+   - Because it existed in earlier Git history, it should be considered permanently burned.
+   - If this repo is public or shared, consider history rewriting or repository secret scanning remediation.
 
 2. **Confirm Atlas Vector Search index**
    - `setup_vector_index.py` creates a 3072-dimension vector index.
-   - If the index is missing, `find_similar_incidents()` can fail during `/api/analyze/`.
+   - If the index is missing or dimension-mismatched, `/api/analyze/` can fail during `search_memory()`.
 
 3. **Potential stale setting**
-   - `incidentiq/settings.py` still defines `GEMINI_EMBEDDING_MODEL`, but `incidents/gemini.py` now uses the local `EMBEDDING_MODEL = "gemini-embedding-001"` constant.
-   - Either remove the unused setting later or wire the constant back to config intentionally.
+   - `incidentiq/settings.py` still defines `GEMINI_EMBEDDING_MODEL`.
+   - `incidents/gemini.py` currently uses `EMBEDDING_MODEL = "gemini-embedding-001"` directly.
+   - Later cleanup can remove the unused setting or intentionally wire it back in.
 
-4. **Tests not fully run in this Codex shell**
-   - `python` is not on PATH here.
-   - Bundled Python lacks project dependencies such as `python-dotenv`.
-   - Syntax parsing passed for edited Python files during the session.
+4. **Runtime environment checks**
+   - Railway should have `MONGODB_URI`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, and `DJANGO_SECRET_KEY`.
+   - Optional/current vars: `DJANGO_ALLOWED_HOSTS`, `DJANGO_DEBUG`, `MONGODB_DB_NAME`, `MONGODB_INCIDENTS_COLLECTION`, `MONGODB_VECTOR_INDEX`.
 
 5. **Nice-to-have backend hardening**
-   - Pagination for `GET /api/incidents/`.
-   - More standardized API error schema.
-   - Better deployed logging/observability.
-   - Seed incidents or graceful first-run behavior for empty Atlas collections.
+   - Add pagination for `GET /api/incidents/`.
+   - Standardize API error responses.
+   - Improve deployed logging/observability.
+   - Add automated tests for API views and agent node behavior.
 
 ---
 
 ## Current File Manifest
 
 Modified/created project files:
-- `incidentiq/settings.py` — env config, frontend templates dir, Railway settings.
-- `incidentiq/urls.py` — root frontend route and API include.
-- `incidentiq/mongo.py` — MongoDB client/collection helpers.
-- `incidents/agent.py` — LangGraph pipeline.
-- `incidents/gemini.py` — Google Gen AI Gemini generation and embeddings.
-- `incidents/models.py` — MongoDB document helpers.
-- `incidents/views.py` — API views for health, analyze, and incident list.
-- `incidents/urls.py` — API URL routes.
-- `frontend/index.html` — vanilla JS dark-theme frontend.
-- `setup_vector_index.py` — Atlas Vector Search index helper.
-- `requirements.txt` — Django, DRF, MongoDB, LangGraph, Google Gen AI dependencies.
-- `Procfile` — Railway web process.
-- `.env.example` — environment variable template.
-- `test_mongo.py` — MongoDB round-trip diagnostic.
+- `README.md` - polished hackathon submission README.
+- `incidentiq/settings.py` - env config, frontend templates dir, Railway settings.
+- `incidentiq/urls.py` - root frontend route and API include.
+- `incidentiq/mongo.py` - MongoDB client/collection helpers.
+- `incidents/agent.py` - LangGraph pipeline.
+- `incidents/gemini.py` - Google Gen AI Gemini generation and embeddings.
+- `incidents/models.py` - MongoDB document helpers.
+- `incidents/views.py` - API views for health, analyze, and incident list.
+- `incidents/urls.py` - API URL routes.
+- `frontend/index.html` - vanilla JS dark-theme frontend.
+- `setup_vector_index.py` - Atlas Vector Search index helper.
+- `seed_incidents.py` - live API seed script with throttling and index selection.
+- `requirements.txt` - Django, DRF, MongoDB, LangGraph, Google Gen AI, and requests dependencies.
+- `Procfile` - Railway web process.
+- `.env.example` - environment variable template.
+- `.gitignore` - ignores local secrets and Codex config.
+- `test_mongo.py` - MongoDB round-trip diagnostic.
 
 Never commit:
 - `.env`
 - API keys or service credentials
 - `gcp-service-account.json`
+- `.codex/`
 
 ---
 
@@ -150,6 +153,12 @@ python test_mongo.py
 
 # Create Atlas vector search index
 python setup_vector_index.py
+
+# Seed all demo incidents
+python seed_incidents.py
+
+# Rerun selected seed incidents
+python seed_incidents.py --indices 7 8 10 11
 
 # Railway process command
 gunicorn incidentiq.wsgi:application --bind 0.0.0.0:$PORT
