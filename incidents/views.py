@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from .adk_agent import run_adk_agent
 from .agent import run_agent
 from .models import get_all_incidents
 
@@ -37,6 +38,30 @@ class AnalyzeView(APIView):
             result = run_agent(error_log)
         except Exception as exc:
             logger.exception("Analyze endpoint failed: %s", exc)
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class AdkAnalyzeView(APIView):
+    """Run the ADK-wrapped incident agent for a submitted error log."""
+
+    def post(self, request: Request) -> Response:
+        """Analyze an error log via the ADK agent and return a generated post-mortem."""
+        error_log = request.data.get("error_log", "")
+        if not isinstance(error_log, str) or not error_log.strip():
+            return Response(
+                {"error": "error_log is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = run_adk_agent(error_log)
+        except Exception as exc:
+            logger.exception("ADK analyze endpoint failed: %s", exc)
             return Response(
                 {"error": str(exc)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
