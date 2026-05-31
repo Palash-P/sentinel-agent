@@ -763,7 +763,7 @@ async function analyzeIncident() {
   btn.disabled = true;
   startTime = Date.now();
 
-  const fetchPromise = fetch(API + '/api/analyze/', {
+  const fetchPromise = fetch(API + '/api/adk/analyze/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ error_log: input })
