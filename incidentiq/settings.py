@@ -27,6 +27,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "incidents.middleware.AutoCaptureMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -79,6 +80,9 @@ MONGODB_URI = os.environ.get("MONGODB_URI", "")
 MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "incidentiq")
 MONGODB_INCIDENTS_COLLECTION = os.environ.get("MONGODB_INCIDENTS_COLLECTION", "incidents")
 MONGODB_VECTOR_INDEX = os.environ.get("MONGODB_VECTOR_INDEX", "incidents_vector_index")
+
+# --- AutoCaptureMiddleware ---
+INCIDENTIQ_URL = os.environ.get("INCIDENTIQ_URL", "http://localhost:8000")
 
 # --- Gemini (google-generativeai SDK) ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")

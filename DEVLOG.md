@@ -1,11 +1,33 @@
 # IncidentIQ Development Log
 
-**Last Updated:** May 27, 2026  
-**Project State:** Submission-ready MVP. The app is deployed, documented, seeded with demo incidents, and pushed to GitHub on `main`.
+**Last Updated:** June 1, 2026  
+**Project State:** Submission-ready MVP with Google ADK integration and auto-capture middleware. Deployed, documented, seeded, and pushed to GitHub on `main`.
 
 ---
 
-## Completed Today
+## Completed June 1, 2026
+
+### Google ADK Integration
+- Installed `google-adk==2.1.0`; pinned in `requirements.txt`.
+- Created `incidents/adk_agent.py`: wraps `run_agent()` as an ADK `FunctionTool`, builds an `Agent` + `InMemorySessionService` + `Runner` per request, and returns the tool result via closure capture.
+- Added `AdkAnalyzeView` to `incidents/views.py` — mirrors `AnalyzeView` but routes through `run_adk_agent()`.
+- Added `POST /api/adk/analyze/` route to `incidents/urls.py`.
+- Updated `frontend/index.html` fetch target from `/api/analyze/` to `/api/adk/analyze/`.
+- `GOOGLE_API_KEY` is mapped from `GEMINI_API_KEY` at runtime if absent so ADK picks it up without a separate env var.
+
+### AutoCaptureMiddleware
+- Created `incidents/middleware.py` with `AutoCaptureMiddleware`.
+- Fires on `process_exception()` only — zero overhead on normal requests.
+- Ignores `/api/` and `/static/` paths (prevents infinite loop), `KeyboardInterrupt`, and `SystemExit`.
+- Posts the formatted traceback to `POST /api/adk/analyze/` in a `daemon=True` background thread — never blocks the response.
+- Uses `requests.post()` with a 30-second timeout; all errors swallowed and logged as `logger.warning()`.
+- Inserted into `MIDDLEWARE` immediately after `SecurityMiddleware` in `settings.py`.
+- Added `INCIDENTIQ_URL` setting (env var `INCIDENTIQ_URL`, default `http://localhost:8000`).
+- `python manage.py check` passes with 0 issues.
+
+---
+
+## Completed May 27, 2026
 
 ### Submission Readiness
 - Rewrote `README.md` as the hackathon-facing project brief for judges.
@@ -103,7 +125,7 @@ Vector Search index requirements:
 
 4. **Runtime environment checks**
    - Railway should have `MONGODB_URI`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, and `DJANGO_SECRET_KEY`.
-   - Optional/current vars: `DJANGO_ALLOWED_HOSTS`, `DJANGO_DEBUG`, `MONGODB_DB_NAME`, `MONGODB_INCIDENTS_COLLECTION`, `MONGODB_VECTOR_INDEX`.
+   - Optional/current vars: `DJANGO_ALLOWED_HOSTS`, `DJANGO_DEBUG`, `MONGODB_DB_NAME`, `MONGODB_INCIDENTS_COLLECTION`, `MONGODB_VECTOR_INDEX`, `INCIDENTIQ_URL` (set to the Railway public URL for AutoCaptureMiddleware to self-POST correctly).
 
 5. **Nice-to-have backend hardening**
    - Add pagination for `GET /api/incidents/`.
@@ -117,15 +139,17 @@ Vector Search index requirements:
 
 Modified/created project files:
 - `README.md` - polished hackathon submission README.
-- `incidentiq/settings.py` - env config, frontend templates dir, Railway settings.
+- `incidentiq/settings.py` - env config, frontend templates dir, Railway settings, INCIDENTIQ_URL.
 - `incidentiq/urls.py` - root frontend route and API include.
 - `incidentiq/mongo.py` - MongoDB client/collection helpers.
 - `incidents/agent.py` - LangGraph pipeline.
+- `incidents/adk_agent.py` - Google ADK FunctionTool wrapper around run_agent().
 - `incidents/gemini.py` - Google Gen AI Gemini generation and embeddings.
+- `incidents/middleware.py` - AutoCaptureMiddleware (fire-and-forget exception capture).
 - `incidents/models.py` - MongoDB document helpers.
-- `incidents/views.py` - API views for health, analyze, and incident list.
-- `incidents/urls.py` - API URL routes.
-- `frontend/index.html` - vanilla JS dark-theme frontend.
+- `incidents/views.py` - API views for health, analyze, ADK analyze, and incident list.
+- `incidents/urls.py` - API URL routes including /api/adk/analyze/.
+- `frontend/index.html` - vanilla JS dark-theme frontend (fetch target: /api/adk/analyze/).
 - `setup_vector_index.py` - Atlas Vector Search index helper.
 - `seed_incidents.py` - live API seed script with throttling and index selection.
 - `requirements.txt` - Django, DRF, MongoDB, LangGraph, Google Gen AI, and requests dependencies.

@@ -16,12 +16,30 @@ Browser
   -> frontend/index.html
 
 Browser
-  -> POST /api/analyze/
+  -> POST /api/adk/analyze/          (frontend default)
+  -> AutoCaptureMiddleware (pass-through — /api/ prefix skipped)
+  -> AdkAnalyzeView
+  -> run_adk_agent(error_log)
+  -> ADK Runner + FunctionTool
+  -> run_agent(error_log)
+  -> LangGraph pipeline
+  -> MongoDB + Gemini
+  -> JSON response
+
+Browser
+  -> POST /api/analyze/              (legacy, untouched)
+  -> AutoCaptureMiddleware (pass-through — /api/ prefix skipped)
   -> AnalyzeView
   -> run_agent(error_log)
   -> LangGraph pipeline
   -> MongoDB + Gemini
   -> JSON response
+
+Unhandled exception on any non-/api/ non-/static/ route
+  -> AutoCaptureMiddleware.process_exception()
+  -> daemon thread
+  -> POST /api/adk/analyze/ (fire-and-forget, 30 s timeout)
+  -> ADK pipeline stores the incident automatically
 ```
 
 ## Agent Flow
@@ -68,9 +86,20 @@ Atlas Vector Search:
 ## API Endpoints
 
 - `GET /` -> serves `frontend/index.html`
-- `POST /api/analyze/` -> accepts `{"error_log": "..."}`, runs the agent, returns the postmortem.
+- `POST /api/adk/analyze/` -> frontend default; accepts `{"error_log": "..."}`, routes through ADK Runner, returns the postmortem.
+- `POST /api/analyze/` -> legacy direct path; accepts `{"error_log": "..."}`, runs LangGraph agent, returns the postmortem.
 - `GET /api/incidents/` -> lists past incidents with JSON-safe `_id` and `created_at`.
 - `GET /api/health/` -> returns `{"status": "ok"}`.
+
+## Middleware
+
+`AutoCaptureMiddleware` (`incidents/middleware.py`) sits immediately after `SecurityMiddleware` in the MIDDLEWARE stack.
+
+- Activates only via `process_exception()` — no cost on successful requests.
+- Skips `/api/*` and `/static/*` paths to prevent self-referential loops.
+- On any other unhandled exception: formats the full traceback and fires a `daemon=True` background thread that POSTs to `POST /api/adk/analyze/` with a 30-second timeout.
+- All network errors are caught and logged as `WARNING`; the middleware can never raise or alter the response.
+- Configured via `INCIDENTIQ_URL` setting (env var `INCIDENTIQ_URL`, default `http://localhost:8000`).
 
 ## Deployment
 
@@ -106,5 +135,7 @@ Static/frontend serving:
 - MongoDB via PyMongo raw documents, not Django ORM.
 - LangGraph over a simple chain so the demo has explicit, inspectable agent stages.
 - Google Gen AI SDK (`google-genai`) for Gemini generation and embeddings.
+- Google ADK (`google-adk`) wraps `run_agent()` as a `FunctionTool` — satisfies the hackathon ADK requirement without replacing LangGraph.
+- `AutoCaptureMiddleware` uses a closure-captured result and a daemon thread so ADK integration adds zero latency to the happy path.
 - Single-file vanilla JS frontend for hackathon speed and Railway simplicity.
 - Railway deployment through `Procfile` and Nixpacks auto-detection.

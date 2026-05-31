@@ -19,7 +19,7 @@ post-mortems using Gemini 1.5 Pro.
 - NEVER use print() for debugging — use Python logging module
 - NEVER install packages not in requirements.txt without telling me
 - Always use environment variables for: MONGODB_URI, GEMINI_API_KEY, 
-  GOOGLE_CLOUD_PROJECT
+  GOOGLE_CLOUD_PROJECT, INCIDENTIQ_URL
 
 ## Code Style
 - Type hints on all function signatures
@@ -34,6 +34,8 @@ incidentiq/
   incidents/
     models.py       # MongoDB document helpers only
     agent.py        # LangGraph agent
+    adk_agent.py    # Google ADK wrapper around run_agent()
+    middleware.py   # AutoCaptureMiddleware — fire-and-forget exception capture
     views.py        # DRF API views
     urls.py
   frontend/index.html
