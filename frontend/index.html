@@ -181,13 +181,51 @@ nav {
   transform: translate(-50%, -58%);
 }
 
+/* hero badge + headline */
+.hero-badge {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  color: var(--green);
+  border: 1px solid rgba(0,255,136,0.25);
+  background: rgba(0,255,136,0.04);
+  padding: 5px 14px;
+  margin-bottom: 2.25rem;
+  text-transform: uppercase;
+}
+.hero-headline {
+  font-family: var(--mono);
+  font-size: clamp(4rem, 10vw, 8rem);
+  font-weight: 600;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+.hero-headline .hl-muted { color: #444; display: block; }
+.hero-headline .hl-green {
+  color: var(--green);
+  display: block;
+  text-shadow: 0 0 40px rgba(0,255,136,0.35), 0 0 80px rgba(0,255,136,0.15);
+}
+.hero-sub {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 2.75rem;
+  max-width: 520px;
+}
+
 /* terminal boot block */
 .boot-terminal {
   font-family: var(--mono);
-  font-size: 0.82rem;
-  line-height: 2;
+  font-size: 0.78rem;
+  line-height: 1.9;
   color: var(--text-dim);
-  margin-bottom: 3.5rem;
+  margin-top: 0;
+  margin-bottom: 2.5rem;
   text-align: left;
   width: 100%;
   max-width: 560px;
@@ -979,6 +1017,16 @@ footer {
   <!-- ─── HERO ─── -->
   <section class="hero" id="analyze">
     <div class="hero-glow"></div>
+
+    <div class="hero-badge">// AI-Powered Incident Resolution Engine</div>
+
+    <h1 class="hero-headline">
+      <span class="hl-muted">Resolve</span>
+      <span class="hl-green">Incidents</span>
+      <span class="hl-muted">Faster</span>
+    </h1>
+
+    <p class="hero-sub">PASTE YOUR ERROR LOG. GET ROOT CAUSE, FIX, AND PREVENTION IN SECONDS.</p>
 
     <div class="boot-terminal" id="boot-terminal" aria-live="polite">
       <span class="boot-line" id="bl-0"><span class="boot-prompt">$&nbsp;</span>initializing incident resolution engine...</span>
