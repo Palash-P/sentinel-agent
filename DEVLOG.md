@@ -23,6 +23,7 @@
 - Uses `requests.post()` with a 30-second timeout; all errors swallowed and logged as `logger.warning()`.
 - Inserted into `MIDDLEWARE` immediately after `SecurityMiddleware` in `settings.py`.
 - Added `INCIDENTIQ_URL` setting (env var `INCIDENTIQ_URL`, default `http://localhost:8000`).
+- Production test confirmed the middleware captures non-`/api/` exceptions and submits them through the ADK pipeline.
 - `python manage.py check` passes with 0 issues.
 
 ---

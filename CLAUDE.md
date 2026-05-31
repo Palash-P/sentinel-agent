@@ -3,13 +3,15 @@
 ## Project
 Django + LangGraph agent that analyzes error logs, finds similar 
 past incidents via MongoDB Atlas Vector Search, and generates 
-post-mortems using Gemini 1.5 Pro.
+post-mortems using Gemini 2.5 Flash via google-genai SDK.
 
 ## Stack
 - Python 3.11, Django 5, Django REST Framework
 - MongoDB Atlas via pymongo (NOT Django ORM — raw documents only)
 - LangGraph for agent orchestration
-- Gemini 1.5 Pro via google-generativeai SDK
+- Gemini 2.5 Flash via google-genai SDK
+- Google ADK 2.1.0 for agent orchestration wrapper
+- AutoCaptureMiddleware for automatic exception capture
 - Deployment: Railway
 - Frontend: Single index.html, vanilla JS, dark theme
 
@@ -35,6 +37,7 @@ incidentiq/
     models.py       # MongoDB document helpers only
     agent.py        # LangGraph agent
     adk_agent.py    # Google ADK wrapper around run_agent()
+    gemini.py       # Gemini embedding + postmortem generation
     middleware.py   # AutoCaptureMiddleware — fire-and-forget exception capture
     views.py        # DRF API views
     urls.py
@@ -42,6 +45,12 @@ incidentiq/
   requirements.txt
   Procfile
   .env.example
+
+## API Endpoints
+- POST /api/analyze/      — LangGraph direct
+- POST /api/adk/analyze/  — Google ADK wrapped (primary)
+- GET  /api/incidents/    — list all incidents
+- GET  /api/health/       — health check
 
 ## Commands
 - Run server: python manage.py runserver
