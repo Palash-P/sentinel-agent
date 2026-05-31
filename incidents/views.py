@@ -22,6 +22,12 @@ def health(_request: Request) -> Response:
     return Response({"status": "ok"})
 
 
+@api_view(["GET"])
+def test_error(_request: Request) -> Response:
+    """Raise a temporary exception for auto-capture testing."""
+    raise RuntimeError("test auto-capture")
+
+
 class AnalyzeView(APIView):
     """Run the incident agent for a submitted error log."""
 
