@@ -52,6 +52,11 @@ incidentiq/
 - GET  /api/incidents/    — list all incidents
 - GET  /api/health/       — health check
 
+## ADK Behavior
+- `incidents/adk_agent.py` exposes `analyze_incident` as the only ADK tool.
+- The ADK Agent instruction must always require calling `analyze_incident` for any error log input, regardless of length.
+- Never allow the ADK Agent to answer directly without calling the tool first.
+
 ## Commands
 - Run server: python manage.py runserver
 - Test MongoDB: python test_mongo.py  

@@ -20,7 +20,7 @@ Browser
   -> AutoCaptureMiddleware (pass-through — /api/ prefix skipped)
   -> AdkAnalyzeView
   -> run_adk_agent(error_log)
-  -> ADK Runner + FunctionTool
+  -> ADK Runner + FunctionTool (must call analyze_incident)
   -> run_agent(error_log)
   -> LangGraph pipeline
   -> MongoDB + Gemini
@@ -58,6 +58,11 @@ Node responsibilities:
 - `search_memory` embeds the cleaned log with `gemini-embedding-001` and retrieves similar incidents from Atlas Vector Search.
 - `generate_postmortem` prompts Gemini `gemini-2.5-flash` with the log and similar-incident context.
 - `store_incident` stores the generated incident document in MongoDB.
+
+ADK wrapper behavior:
+- `incidents/adk_agent.py` exposes `analyze_incident` as the only ADK `FunctionTool`.
+- The ADK `Agent` instruction requires invoking `analyze_incident` for any error log input, regardless of length.
+- If the tool is not invoked, `run_adk_agent()` raises a `RuntimeError` instead of returning a direct model response.
 
 ## MongoDB Collections
 
@@ -136,6 +141,7 @@ Static/frontend serving:
 - LangGraph over a simple chain so the demo has explicit, inspectable agent stages.
 - Google Gen AI SDK (`google-genai`) for Gemini generation and embeddings.
 - Google ADK (`google-adk`) wraps `run_agent()` as a `FunctionTool` — satisfies the hackathon ADK requirement without replacing LangGraph.
+- ADK is instructed to always call `analyze_incident` first so every request runs through the LangGraph pipeline, including short inputs.
 - `AutoCaptureMiddleware` uses a closure-captured result and a daemon thread so ADK integration adds zero latency to the happy path.
 - Single-file vanilla JS frontend for hackathon speed and Railway simplicity.
 - Railway deployment through `Procfile` and Nixpacks auto-detection.

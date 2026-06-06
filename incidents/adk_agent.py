@@ -58,7 +58,9 @@ def run_adk_agent(error_log: str) -> dict[str, Any]:
         instruction=(
             "You are an incident analysis agent. "
             "When given an error log, you MUST call the analyze_incident tool "
-            "and return its result. Do not respond without calling the tool first."
+            "and return its result. Always invoke the analyze_incident tool for "
+            "ANY error log input, regardless of length. Never respond without "
+            "calling the tool first."
         ),
         tools=[tool],
     )

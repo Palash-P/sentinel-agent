@@ -1,7 +1,16 @@
 # IncidentIQ Development Log
 
-**Last Updated:** June 1, 2026  
+**Last Updated:** June 7, 2026  
 **Project State:** Submission-ready MVP with Google ADK integration and auto-capture middleware. Deployed, documented, seeded, and pushed to GitHub on `main`.
+
+---
+
+## Completed June 7, 2026
+
+### ADK Tool Invocation Hardening
+- Updated `incidents/adk_agent.py` so the ADK `Agent` instruction explicitly requires calling the `analyze_incident` tool for any error log input, regardless of length.
+- The ADK wrapper still raises `RuntimeError("ADK agent did not invoke the analyze_incident tool.")` if no tool result is captured.
+- This prevents short error inputs from being answered directly by Gemini without running the LangGraph pipeline.
 
 ---
 
