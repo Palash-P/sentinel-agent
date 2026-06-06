@@ -1,163 +1,134 @@
 # IncidentIQ
 
-**AI incident-resolution agent that turns raw production error logs into searchable post-mortems.**
+**AI-powered institutional memory for engineering teams**
 
-Live demo: [https://web-production-4435e.up.railway.app](https://web-production-4435e.up.railway.app)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![Django](https://img.shields.io/badge/Django-5.1-green)
+![Google ADK](https://img.shields.io/badge/Google_ADK-2.1.0-orange)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)
+![Railway](https://img.shields.io/badge/Deployed-Railway-purple)
 
-Hackathon track: **Google Cloud Rapid Agent — MongoDB track**
+**Live Demo:** [https://web-production-4435e.up.railway.app](https://web-production-4435e.up.railway.app)
 
-## Problem Statement
+**Hackathon:** Google Cloud Rapid Agent Hackathon — MongoDB Track
 
-Incident response is still too manual: engineers dig through noisy logs, search old Slack threads, guess whether a failure has happened before, and write post-mortems after the pressure has already peaked. The context that would make the next outage easier to solve is usually scattered or forgotten.
+## The Problem
 
-IncidentIQ closes that loop. It analyzes a fresh error log, retrieves similar past incidents from vector memory, generates a concise post-mortem, and stores the result so every incident improves the next response.
+Engineers lose institutional knowledge every time an incident is resolved informally. The same errors get debugged from scratch repeatedly. Senior developer knowledge walks out the door when they leave.
+
+## The Solution
+
+IncidentIQ is an autonomous AI agent that captures every incident, generates structured postmortems using Gemini 2.5 Flash, and stores them with semantic embeddings in MongoDB Atlas. When a new error occurs, the agent searches 32+ past incidents using vector similarity to find what your team already knows. Two lines of code integrate it into any Django application automatically.
+
+## Demo GIF
+
+<!-- Demo GIF here -->
+
+> Try it live: https://web-production-4435e.up.railway.app
 
 ## How It Works
 
 ```text
-extract_error -> search_memory -> generate_postmortem -> store_incident
+Input -> extract_error -> search_memory -> generate_postmortem -> store_incident -> Output
 ```
 
-1. `extract_error` cleans the submitted log and derives a useful incident title.
-2. `search_memory` embeds the log with Gemini and searches MongoDB Atlas Vector Search for similar incidents.
-3. `generate_postmortem` prompts Gemini with the new log and retrieved incident context.
-4. `store_incident` saves the structured post-mortem and embedding back to MongoDB for future retrieval.
+1. `extract_error` cleans the raw error log and derives a short incident title.
+2. `search_memory` embeds the cleaned log with `gemini-embedding-001` and searches MongoDB Atlas Vector Search for similar incidents.
+3. `generate_postmortem` prompts Gemini 2.5 Flash with the current log and retrieved incident context.
+4. `store_incident` persists the structured postmortem, source log, embedding, and timestamp in MongoDB Atlas.
 
 ## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
-| Backend | Django 5, Django REST Framework |
-| Agent orchestration | LangGraph |
-| LLM | Gemini via `google-genai` |
-| Embeddings | `gemini-embedding-001` |
-| Vector memory | MongoDB Atlas Vector Search |
-| Database access | PyMongo raw documents |
-| Frontend | Single-file vanilla HTML/CSS/JS |
-| Static serving | WhiteNoise |
-| Deployment | Railway via Nixpacks + Gunicorn |
+| Agent Orchestration | Google ADK 2.1.0 + LangGraph |
+| LLM | Gemini 2.5 Flash (google-genai SDK) |
+| Embeddings | gemini-embedding-001 (3072 dimensions) |
+| Vector Search | MongoDB Atlas Vector Search (cosine similarity) |
+| Backend | Django 5 + Django REST Framework |
+| Database | MongoDB Atlas (pymongo, no ORM) |
+| Deployment | Railway |
+| Partner Track | MongoDB Atlas |
+
+## Key Features
+
+- Autonomous incident capture via AutoCaptureMiddleware
+- Semantic similarity search across 32+ past incidents
+- Structured postmortem generation (root cause, fix, prevention)
+- Google ADK agent orchestration with LangGraph pipeline
+- Self-hostable — incident data stays in your MongoDB cluster
+- Zero-config integration (2 lines of code)
+
+## API Endpoints
+
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/api/analyze/` | Runs the LangGraph incident agent directly |
+| POST | `/api/adk/analyze/` | Runs the Google ADK-wrapped agent; primary frontend path |
+| GET | `/api/incidents/` | Lists all stored incidents with JSON-safe fields |
+| GET | `/api/health/` | Returns `{"status": "ok"}` for health checks |
+
+## Quick Start
+
+```bash
+git clone <repo-url> && cd incidentiq
+cp .env.example .env
+# Fill MONGODB_URI, GEMINI_API_KEY, GOOGLE_CLOUD_PROJECT, INCIDENTIQ_URL, DJANGO_SECRET_KEY
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python manage.py runserver
+```
+
+## Auto-Capture Integration
+
+Add IncidentIQ to any Django app and unhandled exceptions become searchable incident memory:
+
+```python
+MIDDLEWARE.insert(1, "incidents.middleware.AutoCaptureMiddleware")
+INCIDENTIQ_URL = os.getenv("INCIDENTIQ_URL", "http://localhost:8000")
+```
+
+`AutoCaptureMiddleware` listens only on `process_exception()`, skips `/api/` and `/static/` to prevent loops, and posts tracebacks to `/api/adk/analyze/` in a daemon thread with a 30-second timeout. The request still fails normally for the user, while IncidentIQ captures the stack trace, generates the postmortem, and stores the lesson for the next engineer.
 
 ## Architecture
 
 ```text
-                 +-----------------------------+
-                 | Browser / Demo Frontend     |
-                 | frontend/index.html         |
-                 +--------------+--------------+
-                                |
-                                | POST /api/analyze/
-                                v
-                 +--------------+--------------+
-                 | Django REST Framework API   |
-                 | AnalyzeView / IncidentsView |
-                 +--------------+--------------+
-                                |
-                                v
-                 +--------------+--------------+
-                 | LangGraph Agent             |
-                 | extract -> search -> write  |
-                 +------+---------------+------+
-                        |               |
-                        |               |
-                        v               v
-        +---------------+----+     +----+----------------+
-        | MongoDB Atlas      |     | Gemini              |
-        | Vector Search      |     | post-mortem JSON    |
-        +---------------+----+     +----+----------------+
-                        |               |
-                        +-------+-------+
-                                |
-                                v
-                 +--------------+--------------+
-                 | Stored Incident Memory      |
-                 | root cause, fix, embedding  |
-                 +-----------------------------+
+Browser
+  -> GET /
+  -> Django TemplateView
+  -> frontend/index.html
+
+Browser
+  -> POST /api/adk/analyze/          (frontend default)
+  -> AutoCaptureMiddleware (pass-through — /api/ prefix skipped)
+  -> AdkAnalyzeView
+  -> run_adk_agent(error_log)
+  -> ADK Runner + FunctionTool (must call analyze_incident)
+  -> run_agent(error_log)
+  -> LangGraph pipeline
+  -> MongoDB + Gemini
+  -> JSON response
+
+Browser
+  -> POST /api/analyze/              (legacy, untouched)
+  -> AutoCaptureMiddleware (pass-through — /api/ prefix skipped)
+  -> AnalyzeView
+  -> run_agent(error_log)
+  -> LangGraph pipeline
+  -> MongoDB + Gemini
+  -> JSON response
+
+Unhandled exception on any non-/api/ non-/static/ route
+  -> AutoCaptureMiddleware.process_exception()
+  -> daemon thread
+  -> POST /api/adk/analyze/ (fire-and-forget, 30 s timeout)
+  -> ADK pipeline stores the incident automatically
 ```
 
-## Key Features
+## Hackathon Notes
 
-- Paste any Python, Django, Redis, PostgreSQL, MongoDB, or deployment error log and get a structured incident report.
-- Retrieves similar historical incidents using MongoDB Atlas Vector Search.
-- Generates post-mortems with root cause, fix applied, and prevention steps.
-- Stores every analyzed incident as future memory.
-- Clean dark-theme frontend for live demos.
-- JSON API designed for easy integration into dashboards, CI/CD tools, or alerting workflows.
-- Railway-ready deployment with Gunicorn, WhiteNoise, and environment-based configuration.
-- No Django ORM for incident data; MongoDB raw documents are the system of record.
-
-## Setup
-
-Clone the repository:
-
-```bash
-git clone <your-repo-url>
-cd incidentiq
-```
-
-Create and activate a virtual environment:
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-Create your environment file:
-
-```bash
-copy .env.example .env
-```
-
-Fill in the required values:
-
-```env
-MONGODB_URI=your-mongodb-atlas-uri
-GEMINI_API_KEY=your-google-ai-studio-key
-GOOGLE_CLOUD_PROJECT=your-google-cloud-project
-DJANGO_SECRET_KEY=your-django-secret
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run the development server:
-
-```bash
-python manage.py runserver
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000/
-```
-
-Optional MongoDB checks:
-
-```bash
-python test_mongo.py
-python setup_vector_index.py
-```
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/` | Serves the demo frontend |
-| `GET` | `/api/health/` | Health check, returns `{"status": "ok"}` |
-| `POST` | `/api/analyze/` | Accepts `{"error_log": "..."}` and returns a generated post-mortem |
-| `GET` | `/api/incidents/` | Lists stored incident memories |
-
-Example analyze request:
-
-```bash
-curl -X POST https://web-production-4435e.up.railway.app/api/analyze/ \
-  -H "Content-Type: application/json" \
-  -d "{\"error_log\":\"django.db.utils.OperationalError: connection refused\"}"
-```
-
-## Why It Matters
-
-IncidentIQ makes incident response cumulative. Instead of treating every outage as a blank page, the agent builds an operational memory that gets stronger with every failure analyzed.
+- Track: MongoDB
+- Google Cloud tools used: Gemini 2.5 Flash, Google ADK 2.1.0
+- Partner integration: MongoDB Atlas Vector Search
+- Agent type: Autonomous incident resolution agent
