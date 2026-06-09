@@ -60,12 +60,18 @@ class AdkAnalyzeView(APIView):
 
         try:
             result = run_adk_agent(error_log)
-        except Exception as exc:
-            logger.exception("ADK analyze endpoint failed: %s", exc)
-            return Response(
-                {"error": str(exc)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        except Exception as adk_exc:
+            logger.warning(
+                "ADK agent failed, falling back to direct agent: %s", adk_exc
             )
+            try:
+                result = run_agent(error_log)
+            except Exception as exc:
+                logger.exception("Direct agent also failed: %s", exc)
+                return Response(
+                    {"error": str(exc)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         return Response(result, status=status.HTTP_200_OK)
 
