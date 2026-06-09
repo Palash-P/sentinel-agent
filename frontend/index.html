@@ -1294,16 +1294,16 @@ footer {
 
 /* ─── SAMPLE ERROR ─── */
 function insertSample() {
-  const sample = `Traceback (most recent call last):
-  File "manage.py", line 21, in <module>
-    main()
-  File "manage.py", line 17, in main
-    execute_from_command_line(sys.argv)
-  File "/usr/local/lib/python3.11/site-packages/django/core/management/__init__.py", line 442, in execute_from_command_line
-    utility.execute()
-django.db.utils.OperationalError: could not connect to server: Connection refused
-\tIs the server running on host "db" (172.18.0.2) and accepting
-\tTCP/IP connections on port 5432?`;
+  const sample = `redis.exceptions.ConnectionError: Error 111 connecting to redis:6379. Connection refused.
+The Celery worker failed to connect to the Redis broker at redis:6379.
+Traceback (most recent call last):
+  File "celery/apps/worker.py", line 189, in start
+    self.consume(connector, has_beat=self.beat)
+  File "celery/backends/redis.py", line 215, in get
+    return self.client.get(key)
+  File "redis/connection.py", line 707, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 111 connecting to redis:6379. Connection refused.`;
 
   const ta = document.getElementById('error-input');
   ta.value = sample;
