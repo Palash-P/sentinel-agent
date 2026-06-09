@@ -54,7 +54,7 @@ START
 ```
 
 Node responsibilities:
-- `extract_error` cleans the raw error log and derives a short title.
+- `extract_error` cleans the raw error log and derives a short title from lines containing `Error:`, `Exception:`, `Warning:`, or `Failed`; if none match, it uses the last non-empty traceback line.
 - `search_memory` embeds the cleaned log with `gemini-embedding-001` and retrieves similar incidents from Atlas Vector Search.
 - `generate_postmortem` prompts Gemini `gemini-2.5-flash` with the log and similar-incident context.
 - `store_incident` stores the generated incident document in MongoDB.

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 TITLE_MAX_LEN = 80
 SIMILAR_TOP_K = 3
+TITLE_MARKERS = ("Error:", "Exception:", "Warning:", "Failed")
 
 
 class AgentState(TypedDict, total=False):
@@ -56,11 +57,27 @@ def extract_error(state: AgentState) -> dict[str, Any]:
             blank = True
     cleaned = "\n".join(cleaned_lines).strip()
 
-    first_meaningful = next((line for line in cleaned_lines if line.strip()), "incident")
-    title = first_meaningful.strip()[:TITLE_MAX_LEN]
+    title = _derive_title(cleaned)
 
     logger.info("extract_error: title=%r length=%d", title, len(cleaned))
     return {"cleaned_error_log": cleaned, "title": title}
+
+
+def _derive_title(cleaned_error_log: str) -> str:
+    """Choose the most useful incident title from a cleaned traceback."""
+    lines = [line.strip() for line in cleaned_error_log.splitlines() if line.strip()]
+    matching_line = next(
+        (line for line in lines if any(marker in line for marker in TITLE_MARKERS)),
+        None,
+    )
+    if matching_line:
+        return matching_line[:TITLE_MAX_LEN]
+
+    if lines:
+        return lines[-1][:TITLE_MAX_LEN]
+
+    first_line = cleaned_error_log.splitlines()[0].strip() if cleaned_error_log.splitlines() else ""
+    return (first_line or "incident")[:TITLE_MAX_LEN]
 
 
 def search_memory(state: AgentState) -> dict[str, Any]:

@@ -32,7 +32,7 @@ IncidentIQ is an autonomous AI agent that captures every incident, generates str
 Input -> extract_error -> search_memory -> generate_postmortem -> store_incident -> Output
 ```
 
-1. `extract_error` cleans the raw error log and derives a short incident title.
+1. `extract_error` cleans the raw error log and derives a short incident title from the actual error line, not the traceback header.
 2. `search_memory` embeds the cleaned log with `gemini-embedding-001` and searches MongoDB Atlas Vector Search for similar incidents.
 3. `generate_postmortem` prompts Gemini 2.5 Flash with the current log and retrieved incident context.
 4. `store_incident` persists the structured postmortem, source log, embedding, and timestamp in MongoDB Atlas.

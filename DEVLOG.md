@@ -1,7 +1,16 @@
 # IncidentIQ Development Log
 
-**Last Updated:** June 7, 2026  
+**Last Updated:** June 9, 2026  
 **Project State:** Submission-ready MVP with Google ADK integration and auto-capture middleware. Deployed, documented, seeded, and pushed to GitHub on `main`.
+
+---
+
+## Completed June 9, 2026
+
+### Incident Title Extraction Fix
+- Updated `incidents/agent.py` so `extract_error()` no longer uses traceback headers such as `Traceback (most recent call last):` as incident titles.
+- Title extraction now scans cleaned logs for lines containing `Error:`, `Exception:`, `Warning:`, or `Failed`.
+- If no marker line exists, the agent uses the last non-empty traceback line, then falls back to the first line only as a final backup.
 
 ---
 
@@ -74,7 +83,7 @@ The LangGraph flow is linear and stable:
 
 `START -> extract_error -> search_memory -> generate_postmortem -> store_incident -> END`
 
-- `extract_error()` cleans the raw log and derives a title.
+- `extract_error()` cleans the raw log and derives a title from the actual error line when possible.
 - `search_memory()` generates an embedding and queries MongoDB Atlas Vector Search.
 - `generate_postmortem()` calls Gemini and expects structured JSON.
 - `store_incident()` persists the incident document to MongoDB.

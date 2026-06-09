@@ -57,6 +57,11 @@ incidentiq/
 - The ADK Agent instruction must always require calling `analyze_incident` for any error log input, regardless of length.
 - Never allow the ADK Agent to answer directly without calling the tool first.
 
+## Agent Behavior
+- `extract_error()` must derive titles from lines containing `Error:`, `Exception:`, `Warning:`, or `Failed` before using fallback lines.
+- If no marker line exists, use the last non-empty traceback line; use the first line only as the final fallback.
+- Do not use `Traceback (most recent call last):` as the incident title when a specific error line is present.
+
 ## Commands
 - Run server: python manage.py runserver
 - Test MongoDB: python test_mongo.py  
