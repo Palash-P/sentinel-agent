@@ -6,8 +6,8 @@ Wraps the ``google-genai`` SDK behind two narrow helpers:
     * :func:`generate_postmortem` — structured post-mortem from an error log
       and a list of similar past incidents.
 
-The SDK client is initialized lazily on first call with ``GEMINI_API_KEY``
-from the Django settings (which loads it from the environment).
+The SDK clients are created from configured Gemini API keys in priority order
+so 429 quota errors can fall through to backup keys during demos.
 """
 from __future__ import annotations
 
@@ -37,34 +37,44 @@ POSTMORTEM_SCHEMA: dict[str, Any] = {
     "required": ["root_cause", "fix_applied", "prevention_steps"],
 }
 
-_client: genai.Client | None = None
-
-
-def _configure() -> genai.Client:
-    """Create and cache the genai client with GEMINI_API_KEY on first use."""
-    global _client
-    if _client is not None:
-        return _client
-    if not settings.GEMINI_API_KEY:
+def _configure() -> list[genai.Client]:
+    """Create Gemini clients from configured API keys in rotation order."""
+    keys = [
+        getattr(settings, "GEMINI_API_KEY", ""),
+        getattr(settings, "GEMINI_API_KEY_2", ""),
+        getattr(settings, "GEMINI_API_KEY_3", ""),
+    ]
+    configured_keys = [key for key in keys if isinstance(key, str) and key.strip()]
+    if not configured_keys:
         raise RuntimeError("GEMINI_API_KEY is not configured.")
-    _client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    return _client
+    return [genai.Client(api_key=key) for key in configured_keys]
+
+
+def _is_rate_limit_error(exc: genai_errors.APIError) -> bool:
+    """Return True when a Gemini APIError represents HTTP 429 quota exhaustion."""
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    return status == 429 or "429" in str(exc)
 
 
 def generate_embedding(text: str) -> list[float]:
     """Return an embedding vector for ``text`` using Gemini's embedding model."""
     if not isinstance(text, str) or not text.strip():
         raise ValueError("generate_embedding requires a non-empty string.")
-    client = _configure()
+    clients = _configure()
 
-    try:
-        result = client.models.embed_content(
-            model=EMBEDDING_MODEL,
-            contents=text,
-        )
-    except genai_errors.APIError as exc:
-        logger.exception("Embedding request failed: %s", exc)
-        raise
+    for idx, client in enumerate(clients, start=1):
+        try:
+            result = client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=text,
+            )
+            break
+        except genai_errors.APIError as exc:
+            if _is_rate_limit_error(exc) and idx < len(clients):
+                logger.warning("Embedding quota hit on Gemini API key %d; trying next key.", idx)
+                continue
+            logger.exception("Embedding request failed: %s", exc)
+            raise
 
     if not result.embeddings or not result.embeddings[0].values:
         raise RuntimeError("Gemini embedding response was empty.")
@@ -80,23 +90,28 @@ def generate_postmortem(
         raise ValueError("generate_postmortem requires a non-empty error_log.")
     if not isinstance(similar_incidents, list):
         raise TypeError("similar_incidents must be a list of incident documents.")
-    client = _configure()
+    clients = _configure()
 
     prompt = _build_postmortem_prompt(error_log, _format_similar_incidents(similar_incidents))
 
-    try:
-        response = client.models.generate_content(
-            model=GENERATION_MODEL,
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": POSTMORTEM_SCHEMA,
-                "temperature": 0.2,
-            },
-        )
-    except genai_errors.APIError as exc:
-        logger.exception("Gemini generation failed: %s", exc)
-        raise
+    for idx, client in enumerate(clients, start=1):
+        try:
+            response = client.models.generate_content(
+                model=GENERATION_MODEL,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": POSTMORTEM_SCHEMA,
+                    "temperature": 0.2,
+                },
+            )
+            break
+        except genai_errors.APIError as exc:
+            if _is_rate_limit_error(exc) and idx < len(clients):
+                logger.warning("Generation quota hit on Gemini API key %d; trying next key.", idx)
+                continue
+            logger.exception("Gemini generation failed: %s", exc)
+            raise
 
     raw = (response.text or "").strip()
     try:

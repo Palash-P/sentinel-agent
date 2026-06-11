@@ -84,7 +84,9 @@ MONGODB_VECTOR_INDEX = os.environ.get("MONGODB_VECTOR_INDEX", "incidents_vector_
 # --- AutoCaptureMiddleware ---
 INCIDENTIQ_URL = os.environ.get("INCIDENTIQ_URL", "http://localhost:8000")
 
-# --- Gemini (google-generativeai SDK) ---
+# --- Gemini (google-genai SDK) ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY_2 = os.environ.get("GEMINI_API_KEY_2", "")
+GEMINI_API_KEY_3 = os.environ.get("GEMINI_API_KEY_3", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_EMBEDDING_MODEL = os.environ.get("GEMINI_EMBEDDING_MODEL", "models/text-embedding-004")
