@@ -77,7 +77,7 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 # --- MongoDB ---
 MONGODB_URI = os.environ.get("MONGODB_URI", "")
-MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "incidentiq")
+MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "sentinel_agent")
 MONGODB_INCIDENTS_COLLECTION = os.environ.get("MONGODB_INCIDENTS_COLLECTION", "incidents")
 MONGODB_VECTOR_INDEX = os.environ.get("MONGODB_VECTOR_INDEX", "incidents_vector_index")
 

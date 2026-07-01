@@ -23,7 +23,7 @@ def get_client() -> MongoClient:
     """Return the process-wide MongoClient, building it on first call."""
     if not settings.MONGODB_URI:
         raise RuntimeError("MONGODB_URI is not configured.")
-    return MongoClient(settings.MONGODB_URI, appname="incidentiq")
+    return MongoClient(settings.MONGODB_URI, appname="sentinel_agent")
 
 
 def get_db() -> Database:
