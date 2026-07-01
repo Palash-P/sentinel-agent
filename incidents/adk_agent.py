@@ -53,7 +53,7 @@ def run_adk_agent(error_log: str) -> dict[str, Any]:
 
     tool = FunctionTool(func=analyze_incident)
     agent = Agent(
-        name="incidentiq_agent",
+        name="sentinel_agent",
         model=_MODEL,
         instruction=(
             "You are an incident analysis agent. "
