@@ -22,7 +22,7 @@ from .agent import run_agent
 
 logger = logging.getLogger(__name__)
 
-_APP_NAME = "incidentiq"
+_APP_NAME = "sentinel_agent"
 _USER_ID = "api_user"
 _MODEL = "gemini-2.5-flash"
 
