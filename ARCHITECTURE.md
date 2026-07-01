@@ -1,147 +1,221 @@
-# IncidentIQ Architecture
+# Sentinel Architecture
 
 ## Overview
+Sentinel is a Django + DRF application with a Google ADK multi-agent
+incident-resolution system, MongoDB Atlas document storage, Atlas Vector
+Search memory, GitHub MCP integration, Gemini generation, and a
+single-file vanilla JS frontend.
 
-IncidentIQ is a Django + DRF application with a LangGraph-powered incident analysis agent, MongoDB Atlas document storage, Atlas Vector Search memory, Gemini generation, and a single-file vanilla JS frontend served by Django.
-
-Live Railway deployment:
-`https://web-production-4435e.up.railway.app`
+Live Railway deployment: https://[new-sentinel-railway-url]
 
 ## Request Flow
 
 ```text
 Browser
-  -> GET /
-  -> Django TemplateView
-  -> frontend/index.html
-
-Browser
-  -> POST /api/adk/analyze/          (frontend default)
-  -> AutoCaptureMiddleware (pass-through — /api/ prefix skipped)
-  -> AdkAnalyzeView
-  -> run_adk_agent(error_log)
-  -> ADK Runner + FunctionTool (must call analyze_incident)
-  -> run_agent(error_log)
-  -> LangGraph pipeline
-  -> MongoDB + Gemini
-  -> JSON response
-
-Browser
-  -> POST /api/analyze/              (legacy, untouched)
-  -> AutoCaptureMiddleware (pass-through — /api/ prefix skipped)
-  -> AnalyzeView
-  -> run_agent(error_log)
-  -> LangGraph pipeline
-  -> MongoDB + Gemini
-  -> JSON response
-
-Unhandled exception on any non-/api/ non-/static/ route
-  -> AutoCaptureMiddleware.process_exception()
-  -> daemon thread
-  -> POST /api/adk/analyze/ (fire-and-forget, 30 s timeout)
-  -> ADK pipeline stores the incident automatically
+  -> POST /api/sentinel/analyze/
+  -> SentinelAnalyzeView
+  -> run_sentinel_agent(error_log)
+  -> OrchestratorAgent (ADK root)
+       -> TriageAgent          (severity + ownership classification)
+       -> DiagnosisAgent       (RAG search + GitHub MCP commits + root cause)
+       -> RemediationAgent     (fix steps + risk flag detection)
+       -> GuardrailAgent       (approval gate for destructive actions)
+  -> ReflectionAgent           (post-resolution self-improving memory write)
+  -> MongoDB store
+  -> JSON response (200 resolved | 202 pending_approval)
 ```
 
-## Agent Flow
+## Multi-Agent Flow
 
 ```text
 START
-  -> extract_error
-  -> search_memory
-  -> generate_postmortem
-  -> store_incident
-  -> END
+  → OrchestratorAgent
+      → TriageAgent
+          tool: classify_severity(error_log)
+          output: { severity, ownership, confidence }
+      → DiagnosisAgent
+          tool: search_similar_incidents(error_log)     [RAG]
+          tool: list_commits(repo, limit=5)              [GitHub MCP]
+          output: { root_cause, similar_incidents, commits }
+      → RemediationAgent
+          tool: generate_remediation(root_cause, similar_incidents)
+          output: { remediation_steps, risk_flags }
+      → GuardrailAgent
+          tool: evaluate_risk(steps, risk_flags)
+          if risk_flags empty:   { requires_approval: false } → continue
+          if risk_flags present: { requires_approval: true  } → return 202
+  → ReflectionAgent (always runs post-resolution)
+          tool: generate_reflection(incident_doc)
+          writes enriched postmortem back to MongoDB
+          re-embeds and stores with reflection: true
+  → store_incident (saves full document to MongoDB)
+END
 ```
 
-Node responsibilities:
-- `extract_error` cleans the raw error log and derives a short title from lines containing `Error:`, `Exception:`, `Warning:`, or `Failed`; if none match, it uses the last non-empty traceback line.
-- `search_memory` embeds the cleaned log with `gemini-embedding-001` and retrieves similar incidents from Atlas Vector Search.
-- `generate_postmortem` prompts Gemini `gemini-2.5-flash` with the log and similar-incident context.
-- `store_incident` stores the generated incident document in MongoDB.
+## ADK Agent Wiring
 
-ADK wrapper behavior:
-- `incidents/adk_agent.py` exposes `analyze_incident` as the only ADK `FunctionTool`.
-- The ADK `Agent` instruction requires invoking `analyze_incident` for any error log input, regardless of length.
-- If the tool is not invoked, `run_adk_agent()` raises a `RuntimeError` instead of returning a direct model response.
+```python
+# Conceptual structure — see incidents/adk_agent.py for implementation
+triage_agent     = Agent(name="triage",     tools=[classify_severity])
+diagnosis_agent  = Agent(name="diagnosis",  tools=[search_similar_incidents, list_commits])
+remediation_agent= Agent(name="remediation",tools=[generate_remediation])
+guardrail_agent  = Agent(name="guardrail",  tools=[evaluate_risk])
+
+orchestrator = Agent(
+    name="sentinel_orchestrator",
+    sub_agents=[triage_agent, diagnosis_agent, remediation_agent, guardrail_agent],
+    instruction="..."
+)
+```
+
+## MCP Integration
+
+GitHub MCP server provides commit history for deploy correlation:
+- Tool: list_commits(owner, repo, limit=5)
+- Called by DiagnosisAgent during root cause analysis
+- Purpose: correlates "incident started at T" with "last deploy at T-5min"
+- Config: GITHUB_TOKEN env var, GITHUB_MCP_URL env var
+
+## Guardrail Approval Flow
+
+```text
+RemediationAgent flags: risk_flags = ["restart postgres", "drop table"]
+GuardrailAgent: requires_approval = true
+API returns 202:
+{
+  "status": "pending_approval",
+  "approval_token": "uuid",
+  "pending_steps": ["restart postgres", "drop table"],
+  "safe_steps": ["check connection pool", "review logs"]
+}
+Human POSTs to /api/sentinel/approve/ with approval_token
+Pipeline resumes → stores incident with status: resolved
+```
+
+## Reflection Loop (Self-Improving Memory)
+
+```text
+Incident resolved
+  → ReflectionAgent generates enriched summary:
+      "P1 database incident caused by connection pool exhaustion.
+       Fixed by restarting connection pool. Prevention: add pool
+       size monitoring. Similar to 3 past incidents."
+  → generate_embedding(summary) → 3072-dim vector
+  → store in MongoDB reflections collection with reflection: true
+  → future DiagnosisAgent RAG searches include reflections
+  → system gets measurably better at diagnosis over time
+```
 
 ## MongoDB Collections
 
-`incidents` documents use raw PyMongo dictionaries only. Django ORM is not used for app data.
+Database: sentinel_agent
 
+incidents collection:
 ```javascript
 {
   _id: ObjectId,
   title: string,
   error_log: string,
+  severity: "P1" | "P2" | "P3",
+  ownership: string,
   root_cause: string,
   fix_applied: string,
   prevention_steps: [string],
-  embedding: [float],
+  remediation_steps: [string],
+  risk_flags: [string],
+  requires_approval: boolean,
+  github_commits: [{ sha, message, author, date }],
+  similar_incident_count: number,
+  embedding: [float],          // 3072-dim gemini-embedding-001
+  created_at: ISODate,
+  status: "resolved" | "pending_approval" | "reflected"
+}
+```
+
+reflections collection:
+```javascript
+{
+  _id: ObjectId,
+  incident_id: ObjectId,       // reference to source incident
+  summary: string,             // enriched postmortem summary
+  embedding: [float],          // 3072-dim embedding of summary
+  reflection: true,            // always true — filter flag
   created_at: ISODate
 }
 ```
 
-Atlas Vector Search:
-- Index name: `MONGODB_VECTOR_INDEX`, default `incidents_vector_index`
-- Field: `embedding`
-- Dimensions: `3072`
-- Similarity: `cosine`
-- Setup helper: `setup_vector_index.py`
+approvals collection:
+```javascript
+{
+  _id: ObjectId,
+  approval_token: string,      // UUID
+  incident_data: object,       // full incident snapshot
+  pending_steps: [string],
+  status: "pending" | "approved" | "rejected" | "expired",
+  created_at: ISODate,
+  expires_at: ISODate          // created_at + 10 minutes
+}
+```
+
+Atlas Vector Search indexes:
+- incidents_vector_index: field=embedding, dims=3072, similarity=cosine
+- reflections_vector_index: field=embedding, dims=3072, similarity=cosine
 
 ## API Endpoints
 
-- `GET /` -> serves `frontend/index.html`
-- `POST /api/adk/analyze/` -> frontend default; accepts `{"error_log": "..."}`, routes through ADK Runner, returns the postmortem.
-- `POST /api/analyze/` -> legacy direct path; accepts `{"error_log": "..."}`, runs LangGraph agent, returns the postmortem.
-- `GET /api/incidents/` -> lists past incidents with JSON-safe `_id` and `created_at`.
-- `GET /api/health/` -> returns `{"status": "ok"}`.
+- POST /api/sentinel/analyze/  → primary multi-agent pipeline
+- POST /api/sentinel/approve/  → guardrail approval
+- GET  /api/incidents/         → list incidents
+- GET  /api/health/            → health check
+- POST /api/analyze/           → legacy LangGraph (keep)
+- POST /api/adk/analyze/       → legacy ADK (keep)
 
-## Middleware
+## Eval Harness
 
-`AutoCaptureMiddleware` (`incidents/middleware.py`) sits immediately after `SecurityMiddleware` in the MIDDLEWARE stack.
+eval/
+  run_eval.py           # runs 20 synthetic incidents, scores results
+  synthetic_incidents.json  # 20 test cases with expected outputs
+  results/              # eval output JSON (committed to repo)
 
-- Activates only via `process_exception()` — no cost on successful requests.
-- Skips `/api/*` and `/static/*` paths to prevent self-referential loops.
-- On any other unhandled exception: formats the full traceback and fires a `daemon=True` background thread that POSTs to `POST /api/adk/analyze/` with a 30-second timeout.
-- All network errors are caught and logged as `WARNING`; the middleware can never raise or alter the response.
-- Configured via `INCIDENTIQ_URL` setting (env var `INCIDENTIQ_URL`, default `http://localhost:8000`).
+Scoring dimensions:
+- severity_accuracy:   did agent classify P1/P2/P3 correctly?
+- root_cause_quality:  does root_cause mention the actual error type?
+- guardrail_triggered: did destructive actions correctly trigger approval?
+- reflection_stored:   was reflection written back to MongoDB?
+
+## Project Structure
+
+sentinel-agent/
+  incidentiq/           # Django project package (name unchanged)
+    settings.py
+    urls.py
+    mongo.py
+    wsgi.py / asgi.py
+  incidents/
+    models.py           # MongoDB helpers (extended schema)
+    agent.py            # LangGraph utility nodes (used as tool functions)
+    adk_agent.py        # OrchestratorAgent — entry point
+    agents/
+      __init__.py
+      triage.py         # TriageAgent
+      diagnosis.py      # DiagnosisAgent + MCP
+      remediation.py    # RemediationAgent
+      guardrail.py      # GuardrailAgent
+      reflection.py     # ReflectionAgent
+    gemini.py           # Gemini embedding + generation
+    middleware.py       # AutoCaptureMiddleware
+    views.py            # DRF views (extended)
+    urls.py
+  eval/
+    run_eval.py
+    synthetic_incidents.json
+    results/
+  frontend/
+    index.html          # updated for Sentinel branding + approval UI
+  requirements.txt
+  Procfile
+  .env.example
 
 ## Deployment
 
-Railway uses Nixpacks auto-detection. No `railway.json` is required.
-
-`Procfile`:
-
-```Procfile
-web: gunicorn incidentiq.wsgi:application --bind 0.0.0.0:$PORT
-```
-
-Static/frontend serving:
-- `frontend/index.html` is loaded through Django templates.
-- `TEMPLATES["DIRS"]` includes `BASE_DIR / "frontend"`.
-- `STATIC_ROOT = BASE_DIR / "staticfiles"`.
-- WhiteNoise middleware is installed after `SecurityMiddleware`.
-
-## Operational Utilities
-
-- `setup_vector_index.py` creates the MongoDB Atlas Vector Search index for the `embedding` field.
-- `seed_incidents.py` posts realistic demo error logs to `/api/analyze/` using `requests`.
-- `seed_incidents.py` waits 3 seconds between requests to reduce Gemini rate-limit pressure.
-- Selected seed incidents can be rerun with `python seed_incidents.py --indices 7 8 10 11`.
-
-## Source Control Notes
-
-- Active branch: `main`.
-- Local `.codex/` configuration is ignored because it can contain machine-specific MCP settings or credentials.
-- `.env`, service account files, and API keys must never be committed.
-
-## Key Decisions
-
-- MongoDB via PyMongo raw documents, not Django ORM.
-- LangGraph over a simple chain so the demo has explicit, inspectable agent stages.
-- Google Gen AI SDK (`google-genai`) for Gemini generation and embeddings.
-- Google ADK (`google-adk`) wraps `run_agent()` as a `FunctionTool` — satisfies the hackathon ADK requirement without replacing LangGraph.
-- ADK is instructed to always call `analyze_incident` first so every request runs through the LangGraph pipeline, including short inputs.
-- `AutoCaptureMiddleware` uses a closure-captured result and a daemon thread so ADK integration adds zero latency to the happy path.
-- Single-file vanilla JS frontend for hackathon speed and Railway simplicity.
-- Railway deployment through `Procfile` and Nixpacks auto-detection.
+Railway: single web service, Procfile unchanged.
